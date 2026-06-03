@@ -1,0 +1,141 @@
+{
+  "theme": "Light",
+  "archetype": "1 (Organic & Earthy)",
+  "colors": {
+    "primary": {
+      "DEFAULT": "#0284c7",
+      "hover": "#0369a1",
+      "foreground": "#ffffff",
+      "description": "Calm, reassuring blue (Tailwind sky-600)"
+    },
+    "secondary": {
+      "DEFAULT": "#059669",
+      "hover": "#047857",
+      "foreground": "#ffffff",
+      "description": "Soft green for success and reassuring actions (emerald-600)"
+    },
+    "background": {
+      "DEFAULT": "#fafaf9",
+      "description": "Warm white / stone-50 to reduce harsh glare"
+    },
+    "surface": {
+      "DEFAULT": "#ffffff",
+      "description": "Pure white for cards to contrast against background"
+    },
+    "text": {
+      "primary": "#1c1917",
+      "secondary": "#57534e",
+      "description": "Stone-900 for primary text, ensuring APCA contrast compliance"
+    },
+    "border": {
+      "DEFAULT": "#e7e5e4",
+      "active": "#0284c7"
+    },
+    "destructive": {
+      "DEFAULT": "#dc2626",
+      "hover": "#b91c1c",
+      "foreground": "#ffffff",
+      "description": "Clear red for Emergency Contact button"
+    }
+  },
+  "typography": {
+    "font_families": {
+      "heading": "Outfit, sans-serif",
+      "body": "Work Sans, sans-serif"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-bold tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body_large": "text-lg sm:text-xl leading-relaxed",
+      "body": "text-base sm:text-lg leading-relaxed",
+      "label": "text-sm font-bold tracking-wider uppercase"
+    },
+    "rules": [
+      "Patient UI MUST use body_large as the minimum readable text size.",
+      "Never center align dense text blocks. Keep text left-aligned for reading ease.",
+      "Ensure minimum 4.5:1 contrast ratio for all text."
+    ]
+  },
+  "spacing_and_layout": {
+    "patient_ui": {
+      "container_padding": "p-6 sm:p-8 md:p-12",
+      "card_padding": "p-6 md:p-8",
+      "gap": "gap-6 sm:gap-8",
+      "button_min_height": "min-h-[80px]",
+      "border_radius": "rounded-3xl"
+    },
+    "caregiver_admin_ui": {
+      "container_padding": "p-6",
+      "card_padding": "p-6",
+      "gap": "gap-4 sm:gap-6",
+      "border_radius": "rounded-xl"
+    },
+    "grids": {
+      "patient_home": "grid-cols-1 sm:grid-cols-2 gap-6 md:gap-8",
+      "caregiver_dashboard": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"
+    }
+  },
+  "components": {
+    "button": {
+      "patient": "w-full min-h-[80px] text-xl rounded-3xl font-semibold shadow-md active:scale-95 transition-transform",
+      "caregiver": "h-12 px-6 rounded-xl font-medium shadow-sm active:scale-95 transition-transform"
+    },
+    "card": {
+      "patient": "bg-white border-2 border-stone-200 rounded-3xl shadow-sm hover:border-sky-600 transition-colors cursor-pointer",
+      "caregiver": "bg-white border border-stone-200 rounded-xl shadow-sm"
+    },
+    "surface_strategy": "Solid warm backgrounds only. NO glassmorphism, as it reduces legibility for elderly users.",
+    "icons": {
+      "library": "lucide-react",
+      "patient_size": "w-12 h-12 stroke-[2px]",
+      "caregiver_size": "w-5 h-5 stroke-[2px]"
+    }
+  },
+  "motion_and_interactions": {
+    "hover": "Subtle border color change and mild drop-shadow increase.",
+    "active": "Clear down-state scaling (active:scale-[0.98]) for tactile feedback.",
+    "transitions": "transition-all duration-200 ease-in-out",
+    "accessibility": "Respect prefers-reduced-motion. Do not use auto-playing animations on Patient UI."
+  },
+  "image_urls": [
+    {
+      "category": "hero",
+      "url": "https://images.unsplash.com/photo-1765896387387-0538bc9f997e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwyfHxlbGRlcmx5JTIwc2VuaW9yJTIwc21pbGluZyUyMGNhcmVnaXZlciUyMGhvbGRpbmclMjBoYW5kc3xlbnwwfHx8fDE3ODA0ODk4MDZ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Nurse smiling with elderly patient in room - For main landing page hero"
+    },
+    {
+      "category": "features_family",
+      "url": "https://images.unsplash.com/photo-1758686254056-6cd980b9aaee?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHw0fHxmYW1pbHklMjBsaWZlc3R5bGUlMjBoYXBweSUyMHNlbmlvciUyMHJlbGF4aW5nfGVufDB8fHx8MTc4MDQ4OTgwNnww&ixlib=rb-4.1.0&q=85",
+      "description": "Elderly couple looking at a smartphone together - For 'How it Works' or Family Connection section"
+    },
+    {
+      "category": "avatar_patient_male",
+      "url": "https://images.unsplash.com/photo-1533101585792-27f81a845550?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwyfHxlbGRlcmx5JTIwbWFuJTIwZmFjZSUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MDQ4OTgxOHww&ixlib=rb-4.1.0&q=85",
+      "description": "Elderly man face portrait - For patient profile picture or Important People cards"
+    },
+    {
+      "category": "avatar_patient_female",
+      "url": "https://images.unsplash.com/photo-1566616213894-2d4e1baee5d8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHwxfHxlbGRlcmx5JTIwd29tYW4lMjBmYWNlJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzgwNDg5ODE4fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Smiling elderly woman face portrait - For patient profile picture or Important People cards"
+    },
+    {
+      "category": "logo_placeholder",
+      "url": "https://images.unsplash.com/photo-1762939079730-23708c0dd337?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwaGVhbHRoJTIwbG9nb3xlbnwwfHx8fDE3ODA0ODk4MTh8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Medical logo - Fallback for partner/sponsor logos"
+    }
+  ],
+  "accessibility_and_testing": {
+    "testing_attributes": "All interactive elements MUST have data-testid attributes (e.g., data-testid='record-memory-btn').",
+    "aria_roles": "Use aria-labels heavily on icon buttons. Ensure screen reader friendly transcripts for memory features.",
+    "touch_targets": "Minimum 48x48px for Caregiver UI, Minimum 80x80px for Patient UI."
+  },
+  "instructions_to_main_agent": [
+    "Ensure standard HTML/Tailwind is used for the landing page for creative flexibility.",
+    "Use pure Shadcn components for Caregiver and Admin dashboards, heavily adjusting their rounded corners to match the 'rounded-xl' styling.",
+    "For the Patient UI, DO NOT use standard small Shadcn cards. Rebuild large, accessible touch-target cards with 'border-2' and 'rounded-3xl'.",
+    "Avoid deep nested navigation in the Patient UI. Use a flat, linear task flow. Emphasize recognition over recall.",
+    "Include the red 'Emergency Contact' button prominently on the Patient Dashboard.",
+    "Never use purely transparent backgrounds. Always ensure a solid surface behind text for elderly users."
+  ]
+}
