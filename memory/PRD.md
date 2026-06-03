@@ -51,4 +51,11 @@ Added a consent-based, transparent capture layer on top of the existing app (no 
 - AI (`ai.py`): `filter_capture_transcript` divides a transcript into discrete classified memory events (memory/reminder/appointment/medication/person-place), filters aggressively, auto-creates reminders, and routes uncertain/sensitive snippets to Privacy Review; `summarize_meeting` produces key points/decisions/action items/follow-ups/next steps.
 - Privacy & safety: server-side consent enforcement, consent logs, Private Mode blocks processing (HTTP 423), visible "Capture is ON" indicator + timer + pause/stop + manual notes, "inform people nearby" prompts, disclaimers. Default storage = summary & action items only; raw audio never stored.
 - Frontend (`pages/capture/`): CaptureStart (capture + meeting), CaptureSession (active + summary), CaptureSessions (caregiver list), PrivacyReview, CaptureSettings (battery/perf placeholders + "Always-On Memory Layer — Coming Later").
-- Integrated as cards/links inside existing Patient home (Start Capture, Meeting Mode, Private Mode toggle) and Caregiver dashboard (4 quick-action cards) + sidebar nav. Tested 47/47 backend + 100% frontend.
+## Hardening Pass (2026-06) — fix/extend in place, no rebuilds
+- Security: removed demo passwords from frontend → backend `POST /api/auth/demo-login {role}`; centralized JWT in `src/lib/token.js` (expiry check + 401 auto-clear, XSS risk documented); confirmed no API-key secrets in `src/`.
+- Crash safety: `routes.py` transcribe pre-initializes `text` + empty-audio 400 guard; `Emergency.js` and `PatientHome.js` empty catches now log + show non-scary fallbacks (Emergency has retry screen).
+- Correctness: `is True/False`→`==` in tests; stable composite keys in `TodaySummary`; server-side role enforcement verified (403/401).
+- AI Memory Filter: capture pipeline now routes classified events into EXISTING tables (appointment→appointments, medication→medications, person/place→important_people/places), adds confidence tags, writes consent log on stop.
+- Privacy Review: added `edit` action (backend whitelist + inline editor UI).
+- Tests: 55 backend pass (36+11+8 incl. new `tests/test_hardening.py`); frontend 8/8 via testing agent. ESLint clean; no console statements in `src/`.
+- Deferred (P5 maintainability) to avoid destabilizing: large-component splits (CaptureSession/Signup/Onboarding/process_session) and full httpOnly-cookie auth.
