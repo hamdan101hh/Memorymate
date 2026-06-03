@@ -44,3 +44,11 @@ Three roles, JWT auth, role dashboards, memory recording + AI summary/extraction
 1. Add background job to flip overdue pending reminders to "missed" and auto-create caregiver alerts.
 2. Add Google login option.
 3. Add person photo uploads via object storage.
+
+## Feature Layer — Memory Capture & Meeting Mode (2026-06)
+Added a consent-based, transparent capture layer on top of the existing app (no rebuilds, no duplicated dashboards/pages).
+- Backend `capture.py`: `capture_sessions`, `memory_events` (with embedded action_items), `privacy_review_items`, `consent_logs`, `audio_settings`. Endpoints for sessions (create/list/get/status/note/process), events, privacy review (+actions), and settings. Reuses `patient_id_for` and the existing `reminders` collection.
+- AI (`ai.py`): `filter_capture_transcript` divides a transcript into discrete classified memory events (memory/reminder/appointment/medication/person-place), filters aggressively, auto-creates reminders, and routes uncertain/sensitive snippets to Privacy Review; `summarize_meeting` produces key points/decisions/action items/follow-ups/next steps.
+- Privacy & safety: server-side consent enforcement, consent logs, Private Mode blocks processing (HTTP 423), visible "Capture is ON" indicator + timer + pause/stop + manual notes, "inform people nearby" prompts, disclaimers. Default storage = summary & action items only; raw audio never stored.
+- Frontend (`pages/capture/`): CaptureStart (capture + meeting), CaptureSession (active + summary), CaptureSessions (caregiver list), PrivacyReview, CaptureSettings (battery/perf placeholders + "Always-On Memory Layer — Coming Later").
+- Integrated as cards/links inside existing Patient home (Start Capture, Meeting Mode, Private Mode toggle) and Caregiver dashboard (4 quick-action cards) + sidebar nav. Tested 47/47 backend + 100% frontend.
