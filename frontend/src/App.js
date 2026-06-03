@@ -41,6 +41,12 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminCollections from "./pages/admin/AdminCollections";
 import AdminLogs from "./pages/admin/AdminLogs";
 
+import CaptureStart from "./pages/capture/CaptureStart";
+import CaptureSession from "./pages/capture/CaptureSession";
+import CaptureSessions from "./pages/capture/CaptureSessions";
+import PrivacyReview from "./pages/capture/PrivacyReview";
+import CaptureSettings from "./pages/capture/CaptureSettings";
+
 function homePath(role) {
   if (role === "patient") return "/patient";
   if (role === "caregiver") return "/caregiver";
@@ -85,6 +91,11 @@ function AppRoutes() {
         <Route path="places" element={<PatientPlaces />} />
         <Route path="emergency" element={<Emergency />} />
         <Route path="settings" element={<PatientSettings />} />
+        <Route path="capture" element={<CaptureStart mode="capture" />} />
+        <Route path="meeting" element={<CaptureStart mode="meeting" />} />
+        <Route path="capture/session/:id" element={<CaptureSession />} />
+        <Route path="capture/review" element={<PrivacyReview />} />
+        <Route path="capture/settings" element={<CaptureSettings />} />
       </Route>
 
       <Route path="/caregiver" element={<Protected roles={["caregiver", "admin"]}><CaregiverLayout /></Protected>}>
@@ -99,6 +110,12 @@ function AppRoutes() {
         <Route path="alerts" element={<Alerts />} />
         <Route path="notes" element={<CaregiverNotes />} />
         <Route path="settings" element={<CgSettings />} />
+        <Route path="capture" element={<CaptureStart mode="capture" />} />
+        <Route path="meeting" element={<CaptureStart mode="meeting" />} />
+        <Route path="capture/sessions" element={<CaptureSessions />} />
+        <Route path="capture/session/:id" element={<CaptureSession />} />
+        <Route path="capture/review" element={<PrivacyReview />} />
+        <Route path="capture/settings" element={<CaptureSettings />} />
       </Route>
 
       <Route path="/admin" element={<Protected roles={["admin"]}><AdminLayout /></Protected>}>

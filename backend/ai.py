@@ -160,3 +160,94 @@ async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
             os.unlink(tmp_path)
         except OSError:
             pass
+
+
+
+CAPTURE_RULES = (
+    "\nYou are a strict memory-support FILTER for a consent-based capture session. "
+    "You DO NOT save everything. Filter aggressively and keep only information that genuinely "
+    "helps memory support: events worth remembering, reminders, appointments, medication notes, "
+    "and updates about important people/places.\n"
+    "Rules:\n"
+    "- If a transcript contains multiple topics, SPLIT it into separate events.\n"
+    "- Ignore small talk, filler, and irrelevant chatter (do not save).\n"
+    "- If content is private/sensitive or you are unsure whether it should be saved, send it to caregiver privacy review instead of saving.\n"
+    "- Never invent details. Use only what is in the transcript.\n"
+)
+
+
+async def filter_capture_transcript(transcript: str, meta: dict | None = None) -> dict:
+    """Classify + divide a capture transcript into discrete memory events and review items."""
+    fallback = {"events": [], "review_items": []}
+    meta = meta or {}
+    ctx = f"Session title: {meta.get('title','')}. Purpose: {meta.get('purpose','')}. People involved: {meta.get('people_involved','')}."
+    system = (
+        SAFETY_RULES + CAPTURE_RULES
+        + "\nRespond ONLY with valid JSON in exactly this shape:\n"
+        "{\n"
+        '  "events": [\n'
+        "    {\n"
+        '      "title": "short title",\n'
+        '      "event_type": "memory_event | reminder | appointment | medication | person_place_update",\n'
+        '      "summary": "1-2 simple sentences",\n'
+        '      "event_time": "morning | afternoon | evening | a time/date if mentioned, else empty",\n'
+        '      "people": ["names"],\n'
+        '      "places": ["places"],\n'
+        '      "reminders": ["reminder text"],\n'
+        '      "action_items": ["action item text"],\n'
+        '      "privacy_level": "normal | sensitive"\n'
+        "    }\n"
+        "  ],\n"
+        '  "review_items": [\n'
+        '    {"content": "the snippet", "suggested_type": "reminder|memory_event|appointment|private", "reason": "why this needs review"}\n'
+        "  ]\n"
+        "}\n"
+        "Use empty arrays when nothing applies. Keep events focused and separate.\n\n"
+        f"Session context: {ctx}"
+    )
+    try:
+        chat = _chat(system)
+        resp = await chat.send_message(UserMessage(text=f"Transcript:\n{transcript}"))
+        data = _extract_json(resp)
+        data.setdefault("events", [])
+        data.setdefault("review_items", [])
+        for ev in data["events"]:
+            for k, default in {"title": "Memory event", "event_type": "memory_event", "summary": "",
+                               "event_time": "", "people": [], "places": [], "reminders": [],
+                               "action_items": [], "privacy_level": "normal"}.items():
+                ev.setdefault(k, default)
+        return data
+    except Exception as e:
+        print(f"[ai.filter_capture_transcript] failed: {e}")
+        return fallback
+
+
+async def summarize_meeting(transcript: str, meta: dict | None = None) -> dict:
+    """Produce a structured meeting summary."""
+    meta = meta or {}
+    fallback = {
+        "summary": transcript[:240], "key_points": [], "decisions": [], "action_items": [],
+        "follow_ups": [], "people": [], "dates": [], "reminders": [], "next_steps": [],
+    }
+    system = (
+        SAFETY_RULES
+        + "\nYou are summarizing a meeting that was captured with consent. "
+        "Be factual and concise. Respond ONLY with valid JSON in exactly this shape:\n"
+        "{\n"
+        '  "summary": "3-5 sentence overview",\n'
+        '  "key_points": ["..."], "decisions": ["..."], "action_items": ["..."],\n'
+        '  "follow_ups": ["..."], "people": ["..."], "dates": ["..."],\n'
+        '  "reminders": ["..."], "next_steps": ["..."]\n'
+        "}\nUse empty arrays where nothing applies. Do not invent anything.\n\n"
+        f"Meeting title: {meta.get('title','')}. Purpose: {meta.get('purpose','')}. People: {meta.get('people_involved','')}."
+    )
+    try:
+        chat = _chat(system)
+        resp = await chat.send_message(UserMessage(text=f"Meeting transcript:\n{transcript}"))
+        data = _extract_json(resp)
+        for k in fallback:
+            data.setdefault(k, fallback[k])
+        return data
+    except Exception as e:
+        print(f"[ai.summarize_meeting] failed: {e}")
+        return fallback

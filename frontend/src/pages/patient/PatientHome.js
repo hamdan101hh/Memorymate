@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone } from "lucide-react";
+import api from "../../lib/api";
+import { Switch } from "../../components/ui/switch";
+import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone, Radio, Video, EyeOff } from "lucide-react";
 
 function useClock() {
   const [now, setNow] = useState(new Date());
@@ -57,6 +59,54 @@ export default function PatientHome() {
           </span>
           <span className="font-heading text-xl sm:text-2xl font-bold text-red-700">Emergency Contact</span>
         </Link>
+      </div>
+
+      <CaptureSection />
+    </div>
+  );
+}
+
+function CaptureSection() {
+  const [settings, setSettings] = useState(null);
+  useEffect(() => { api.get("/capture/settings").then(({ data }) => setSettings(data)); }, []);
+
+  const togglePrivate = async (v) => {
+    setSettings((s) => ({ ...s, private_mode: v }));
+    try { await api.patch("/capture/settings", { private_mode: v }); } catch { /* noop */ }
+  };
+
+  return (
+    <div className="mt-7" data-testid="capture-section">
+      <h2 className="font-heading text-xl font-semibold mb-3">Memory Capture</h2>
+
+      {settings?.private_mode && (
+        <div className="mb-4 rounded-2xl bg-stone-900 text-white p-4 flex items-center gap-3" data-testid="private-mode-banner">
+          <EyeOff className="w-6 h-6" />
+          <p className="font-semibold">Private Mode is ON — nothing is being recorded or saved.</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <Link to="capture" data-testid="tile-capture"
+          className="flex items-center gap-5 bg-white border-2 border-stone-200 rounded-3xl p-6 min-h-[96px] shadow-sm hover:border-sky-500 hover:shadow-md active:scale-[0.98] transition-all">
+          <span className="grid place-items-center w-14 h-14 rounded-2xl bg-sky-600 text-white shrink-0"><Radio className="w-8 h-8" /></span>
+          <span className="font-heading text-xl font-semibold">Start Memory Capture</span>
+        </Link>
+        <Link to="meeting" data-testid="tile-meeting"
+          className="flex items-center gap-5 bg-white border-2 border-stone-200 rounded-3xl p-6 min-h-[96px] shadow-sm hover:border-violet-500 hover:shadow-md active:scale-[0.98] transition-all">
+          <span className="grid place-items-center w-14 h-14 rounded-2xl bg-violet-600 text-white shrink-0"><Video className="w-8 h-8" /></span>
+          <span className="font-heading text-xl font-semibold">Meeting Mode</span>
+        </Link>
+      </div>
+
+      <div className="mt-4 rounded-3xl bg-white border-2 border-stone-200 p-5 flex items-center justify-between" data-testid="private-mode-toggle-row">
+        <span className="flex items-center gap-3 text-lg font-medium"><EyeOff className="w-6 h-6 text-stone-500" /> Private Mode</span>
+        <Switch checked={!!settings?.private_mode} onCheckedChange={togglePrivate} data-testid="home-private-mode-toggle" />
+      </div>
+
+      <div className="mt-3 flex gap-4 text-sm">
+        <Link to="capture/review" className="text-sky-700 font-medium" data-testid="link-privacy-review">Privacy review</Link>
+        <Link to="capture/settings" className="text-sky-700 font-medium" data-testid="link-capture-settings">Capture settings</Link>
       </div>
     </div>
   );

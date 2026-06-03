@@ -4,7 +4,7 @@ import api from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import {
   UserRound, CheckCircle2, AlertTriangle, Bell, Pill, CalendarClock,
-  Sparkles, Loader2, Clock, StickyNote, ArrowRight,
+  Sparkles, Loader2, Clock, StickyNote, ArrowRight, Radio, Video, ShieldQuestion,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,8 +17,9 @@ export default function CaregiverDashboard() {
     Promise.all([
       api.get("/patient/overview"), api.get("/reminders"), api.get("/alerts"),
       api.get("/memories"), api.get("/medications"), api.get("/appointments"), api.get("/notes"),
-    ]).then(([ov, rem, al, mem, med, ap, nt]) => {
-      setD({ ov: ov.data, reminders: rem.data, alerts: al.data, memories: mem.data, meds: med.data, appts: ap.data, notes: nt.data });
+      api.get("/capture/sessions"), api.get("/capture/review"),
+    ]).then(([ov, rem, al, mem, med, ap, nt, cap, rev]) => {
+      setD({ ov: ov.data, reminders: rem.data, alerts: al.data, memories: mem.data, meds: med.data, appts: ap.data, notes: nt.data, sessions: cap.data, review: rev.data });
     });
   }, []);
 
@@ -52,6 +53,16 @@ export default function CaregiverDashboard() {
           <p className="whitespace-pre-wrap text-stone-700 leading-relaxed text-sm">{summary}</p>
         </div>
       )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-testid="capture-quick-actions">
+        <QuickAction to="/caregiver/capture" icon={Radio} color="bg-sky-600" label="Start capture session" />
+        <QuickAction to="/caregiver/capture/sessions" icon={Video} color="bg-violet-600" label="Active sessions"
+          badge={(d.sessions || []).filter((s) => ["active", "paused"].includes(s.status)).length} />
+        <QuickAction to="/caregiver/capture/sessions" icon={Sparkles} color="bg-emerald-600" label="Meeting summaries"
+          badge={(d.sessions || []).filter((s) => s.status === "completed").length} />
+        <QuickAction to="/caregiver/capture/review" icon={ShieldQuestion} color="bg-amber-500" label="Pending privacy review"
+          badge={(d.review || []).length} />
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat icon={CheckCircle2} color="emerald" label="Completed" value={ov.reminders_completed} />
@@ -148,3 +159,13 @@ function Row({ title, sub, tone }) {
 }
 const Empty = ({ text }) => <p className="text-sm text-stone-400">{text}</p>;
 const Loading = () => <div className="grid place-items-center py-20"><Loader2 className="w-7 h-7 animate-spin text-sky-600" /></div>;
+
+function QuickAction({ to, icon: Icon, color, label, badge }) {
+  return (
+    <Link to={to} className="bg-white border border-stone-200 rounded-xl p-4 hover:border-sky-300 hover:shadow-sm transition-all relative" data-testid={`quick-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <span className={`grid place-items-center w-10 h-10 rounded-lg text-white ${color}`}><Icon className="w-5 h-5" /></span>
+      {badge > 0 && <span className="absolute top-3 right-3 bg-red-100 text-red-700 text-xs rounded-full px-2 py-0.5">{badge}</span>}
+      <p className="mt-3 text-sm font-medium leading-tight">{label}</p>
+    </Link>
+  );
+}
