@@ -79,15 +79,15 @@ async def patient_overview(user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
     p = await db.patients.find_one({"id": pid}, PROJ)
     reminders = await _list("reminders", pid)
-    completed = len([r for r in reminders if r["status"] == "done"])
-    missed = len([r for r in reminders if r["status"] == "missed"])
+    completed = len([r for r in reminders if r.get("status") == "done"])
+    missed = len([r for r in reminders if r.get("status") == "missed"])
     last_memory = await db.memories.find_one({"patient_id": pid}, PROJ, sort=[("created_at", -1)])
     last_summary = last_memory.get("simple_summary") if last_memory else None
     return {
         "patient": p,
         "reminders_completed": completed,
         "reminders_missed": missed,
-        "reminders_pending": len([r for r in reminders if r["status"] == "pending"]),
+        "reminders_pending": len([r for r in reminders if r.get("status") == "pending"]),
         "total_memories": await db.memories.count_documents({"patient_id": pid}),
         "last_activity": last_memory.get("created_at") if last_memory else None,
         "recent_summary": last_summary,
@@ -528,7 +528,7 @@ async def summary_today(user: dict = Depends(get_current_user)):
     return {
         "date": today, "timeline": buckets,
         "people": people, "places": places, "medications": meds,
-        "reminders_today": [r for r in reminders if r["status"] in ("pending", "missed")][:10],
+        "reminders_today": [r for r in reminders if r.get("status") in ("pending", "missed")][:10],
         "notes": notes[:10], "appointments": appts[:10],
         "has_data": len(memories) > 0,
     }

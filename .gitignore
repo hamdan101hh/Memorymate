@@ -76,6 +76,14 @@ agenthub/agents/youtube/db
 # Build caches
 .cache/
 
+# Local dev tooling (standalone MongoDB + data)
+.local-mongo/
+backend/.venv/
+
+# Local server logs
+*.log
+server.log
+
 memory/test_credentials.md
 
 # Mobile development
@@ -83,6 +91,9 @@ android-sdk/
 .env
 .env.*
 *.env
+# Keep example env templates in the repo (they contain no secrets)
+!.env.example
+!**/.env.example
 credentials.json
 *.key
 .credentials

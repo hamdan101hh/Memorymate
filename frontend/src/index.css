@@ -30,15 +30,31 @@ h1, h2, h3, h4, .font-heading { font-family: 'Outfit', sans-serif; }
 
 /* Large text accessibility mode */
 .mm-large-text { font-size: 118%; }
+.mm-large-text body { line-height: 1.6; }
 
-/* High contrast mode */
+/* High contrast mode — drives BOTH the custom --mm-* vars and the shadcn/Tailwind
+   design tokens so the entire UI (cards, buttons, borders, muted text) responds. */
 .mm-high-contrast {
   --mm-bg: #ffffff;
   --mm-text: #000000;
   --mm-text-soft: #1a1a1a;
   --mm-border: #000000;
+
+  --background: 0 0% 100%;
+  --foreground: 0 0% 0%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 0%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 0%;
+  --muted-foreground: 0 0% 13%;
+  --primary: 201 100% 26%;
+  --secondary-foreground: 0 0% 0%;
+  --border: 0 0% 0%;
+  --input: 0 0% 0%;
+  --ring: 0 0% 0%;
 }
-.mm-high-contrast .mm-card { border-color: #000000 !important; }
+.mm-high-contrast .mm-card,
+.mm-high-contrast [class*="border"] { border-color: #000000 !important; }
 
 @layer base {
   :root {

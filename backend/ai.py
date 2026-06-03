@@ -14,9 +14,32 @@ from emergentintegrations.llm.openai import OpenAISpeechToText
 
 load_dotenv(Path(__file__).parent / ".env")
 
-LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
-MODEL_PROVIDER = "anthropic"
-MODEL_NAME = "claude-sonnet-4-6"
+
+def _resolve_provider():
+    """Pick an LLM key + provider from the environment.
+
+    Supports the Emergent universal key, a direct Anthropic key, or an OpenAI key,
+    so the app is not locked to a single provider. Returns (key, provider, model).
+    If no key is configured we still return a placeholder so the module imports and
+    the app boots — every AI call is wrapped in try/except and degrades gracefully.
+    """
+    emergent = os.environ.get("EMERGENT_LLM_KEY")
+    anthropic = os.environ.get("ANTHROPIC_API_KEY")
+    openai = os.environ.get("OPENAI_API_KEY")
+    if emergent and emergent != "local-dev-placeholder-key":
+        return emergent, "anthropic", os.environ.get("MODEL_NAME", "claude-sonnet-4-6")
+    if anthropic:
+        return anthropic, "anthropic", os.environ.get("MODEL_NAME", "claude-sonnet-4-6")
+    if openai:
+        return openai, "openai", os.environ.get("MODEL_NAME", "gpt-4o-mini")
+    # No real key configured — AI features will use graceful fallbacks.
+    return emergent or "no-key-configured", "anthropic", "claude-sonnet-4-6"
+
+
+LLM_KEY, MODEL_PROVIDER, MODEL_NAME = _resolve_provider()
+# Whisper transcription needs an OpenAI-compatible key (Emergent or OpenAI).
+STT_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY") or LLM_KEY
+AI_ENABLED = LLM_KEY not in ("no-key-configured", "local-dev-placeholder-key")
 
 SAFETY_RULES = (
     "You are MemoryMate, a calm, gentle memory-support assistant for elderly people and "
@@ -39,16 +62,28 @@ def _chat(system_message: str, session_id: str | None = None) -> LlmChat:
 
 
 def _extract_json(text: str) -> dict:
-    """Pull the first JSON object out of an LLM response."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("```", 2)[1]
-        if text.startswith("json"):
-            text = text[4:]
+    """Pull the first JSON object out of an LLM response, defensively.
+
+    Handles ```json fenced blocks, surrounding prose, and common trailing-comma
+    mistakes that otherwise make json.loads fail.
+    """
+    import re
+
+    text = (text or "").strip()
+    # Strip a fenced code block if present (```json ... ``` or ``` ... ```).
+    fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if fence:
+        text = fence.group(1).strip()
+    # Narrow to the outermost JSON object.
     start, end = text.find("{"), text.rfind("}")
     if start != -1 and end != -1:
         text = text[start : end + 1]
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Remove trailing commas before } or ] and retry once.
+        cleaned = re.sub(r",(\s*[}\]])", r"\1", text)
+        return json.loads(cleaned)
 
 
 async def process_transcript(transcript: str) -> dict:
@@ -147,7 +182,7 @@ async def explain_person(name: str, relationship: str, description: str, explana
 async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
     """Transcribe an uploaded audio blob using Whisper."""
     suffix = Path(filename).suffix or ".webm"
-    stt = OpenAISpeechToText(api_key=LLM_KEY)
+    stt = OpenAISpeechToText(api_key=STT_KEY)
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
@@ -204,6 +239,14 @@ async def filter_capture_transcript(transcript: str, meta: dict | None = None) -
         "  ]\n"
         "}\n"
         "Use empty arrays when nothing applies. Keep events focused and separate.\n\n"
+        "EXAMPLE — for the transcript: \"Today I spoke to Fadi about the business idea. "
+        "Then Sarah came home and reminded me about the doctor appointment. Later I went to the pharmacy.\" "
+        "you would return three events: "
+        "(1) title 'Meeting with Fadi', event_type 'memory_event', people ['Fadi'], "
+        "action_items ['Follow up with Fadi']; "
+        "(2) title 'Sarah's reminder', event_type 'reminder', people ['Sarah'], "
+        "reminders ['Doctor appointment']; "
+        "(3) title 'Pharmacy visit', event_type 'memory_event', places ['Pharmacy'].\n\n"
         f"Session context: {ctx}"
     )
     try:
