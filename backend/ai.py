@@ -195,7 +195,8 @@ async def filter_capture_transcript(transcript: str, meta: dict | None = None) -
         '      "places": ["places"],\n'
         '      "reminders": ["reminder text"],\n'
         '      "action_items": ["action item text"],\n'
-        '      "privacy_level": "normal | sensitive"\n'
+        '      "privacy_level": "normal | sensitive",\n'
+        '      "confidence": "low | medium | high"\n'
         "    }\n"
         "  ],\n"
         '  "review_items": [\n'
@@ -214,7 +215,7 @@ async def filter_capture_transcript(transcript: str, meta: dict | None = None) -
         for ev in data["events"]:
             for k, default in {"title": "Memory event", "event_type": "memory_event", "summary": "",
                                "event_time": "", "people": [], "places": [], "reminders": [],
-                               "action_items": [], "privacy_level": "normal"}.items():
+                               "action_items": [], "privacy_level": "normal", "confidence": "medium"}.items():
                 ev.setdefault(k, default)
         return data
     except Exception as e:

@@ -143,6 +143,14 @@ async def update_session(sid: str, body: SessionStatus, user: dict = Depends(get
     res = await db.capture_sessions.update_one({"id": sid, "patient_id": pid}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Session not found.")
+    # Write a consent log entry whenever a session is stopped, for transparency/auditing.
+    if body.status in ("stopped", "completed"):
+        await db.consent_logs.insert_one({
+            "id": str(uuid.uuid4()), "patient_id": pid, "session_id": sid, "user_id": user["id"],
+            "confirmed": True, "informed_others": None,
+            "text": f"Capture session was {body.status} by the user.", "created_at": NOW(),
+        })
+        await _log(user["id"], "stop_capture", "capture_session", sid, body.status)
     return await db.capture_sessions.find_one({"id": sid}, PROJ)
 
 
@@ -184,9 +192,11 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
     created_events = []
     for ev in result.get("events", []):
         eid = str(uuid.uuid4())
+        etype = ev.get("event_type", "memory_event")
         doc = {
             "id": eid, "patient_id": pid, "session_id": sid,
-            "title": ev.get("title", "Memory event"), "event_type": ev.get("event_type", "memory_event"),
+            "title": ev.get("title", "Memory event"), "event_type": etype,
+            "category": etype, "confidence": ev.get("confidence", "medium"),
             "summary": ev.get("summary", ""), "event_time": ev.get("event_time", ""),
             "people": ev.get("people", []), "places": ev.get("places", []),
             "reminders": ev.get("reminders", []), "action_items": ev.get("action_items", []),
@@ -201,10 +211,45 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
             await db.reminders.insert_one({
                 "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
                 "title": r, "description": f"From capture: {s['title']}",
-                "category": "appointment" if ev.get("event_type") == "appointment" else "task",
+                "category": "appointment" if etype == "appointment" else "task",
                 "priority": "medium", "due_date": "", "due_time": "", "repeat_rule": "none",
                 "status": "pending", "source": "ai", "created_at": now, "completed_at": None,
             })
+
+        # Route classified events into the EXISTING domain tables (no new duplicate tables).
+        if etype == "appointment":
+            await db.appointments.insert_one({
+                "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+                "title": ev.get("title", "Appointment"), "doctor_or_clinic": "",
+                "date": ev.get("event_time", ""), "time": "",
+                "location": (ev.get("places") or [""])[0], "notes": ev.get("summary", ""),
+                "transport_notes": "", "reminder_time": "", "created_at": now,
+            })
+        elif etype == "medication":
+            await db.medications.insert_one({
+                "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+                "medication_name": ev.get("title", "Medication note"), "dosage": "", "frequency": "",
+                "time_of_day": "morning", "instructions": ev.get("summary", ""),
+                "start_date": "", "end_date": "",
+                "notes": "From capture — please confirm with a doctor or pharmacist.",
+                "priority": "medium", "created_at": now,
+            })
+        elif etype == "person_place_update":
+            for nm in ev.get("people", []):
+                if nm and not await db.important_people.find_one({"patient_id": pid, "name": nm}):
+                    await db.important_people.insert_one({
+                        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+                        "name": nm, "relationship": "", "photo_url": None, "phone": None,
+                        "description": ev.get("summary", ""), "explanation_for_patient": "",
+                        "notes": "Added from a capture session.", "last_mentioned": now[:10], "created_at": now,
+                    })
+            for pl in ev.get("places", []):
+                if pl and not await db.important_places.find_one({"patient_id": pid, "name": pl}):
+                    await db.important_places.insert_one({
+                        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+                        "name": pl, "type": "custom", "address": "", "description": ev.get("summary", ""),
+                        "instructions": "", "notes": "Added from a capture session.", "created_at": now,
+                    })
 
     # Uncertain / sensitive snippets -> privacy review queue
     created_reviews = []
@@ -252,7 +297,11 @@ async def list_review(status: str = "pending", user: dict = Depends(get_current_
 
 
 class ReviewAction(BaseModel):
-    action: str  # save | delete | convert_reminder | convert_memory | mark_private
+    action: str  # save | delete | convert_reminder | convert_memory | mark_private | edit
+    edited_content: Optional[str] = None
+
+
+VALID_REVIEW_ACTIONS = {"save", "delete", "convert_reminder", "convert_memory", "mark_private", "edit"}
 
 
 @router.post("/review/{rid}/action")
@@ -261,24 +310,39 @@ async def review_action(rid: str, body: ReviewAction, user: dict = Depends(get_c
     item = await db.privacy_review_items.find_one({"id": rid, "patient_id": pid}, PROJ)
     if not item:
         raise HTTPException(status_code=404, detail="Review item not found.")
-    now = NOW()
     action = body.action
+    if action not in VALID_REVIEW_ACTIONS:
+        raise HTTPException(status_code=400, detail="Unknown review action.")
+    now = NOW()
+    content = (body.edited_content or item["content"]) if action == "edit" else item["content"]
 
-    if action == "convert_reminder":
+    if action == "edit":
+        # Save the edited text as a memory event.
+        await db.memory_events.insert_one({
+            "id": str(uuid.uuid4()), "patient_id": pid, "session_id": item["session_id"],
+            "title": (content[:60] or "Reviewed memory"), "event_type": "memory_event",
+            "category": "memory_event", "confidence": "high",
+            "summary": content, "event_time": "", "people": [], "places": [],
+            "reminders": [], "action_items": [], "privacy_level": "normal",
+            "source": "review", "status": "saved", "created_at": now,
+        })
+    elif action == "convert_reminder":
         await db.reminders.insert_one({
             "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-            "title": item["content"][:120], "description": "From privacy review",
+            "title": content[:120], "description": "From privacy review",
             "category": "task", "priority": "medium", "due_date": "", "due_time": "", "repeat_rule": "none",
             "status": "pending", "source": "caregiver", "created_at": now, "completed_at": None,
         })
     elif action in ("convert_memory", "save"):
         await db.memory_events.insert_one({
             "id": str(uuid.uuid4()), "patient_id": pid, "session_id": item["session_id"],
-            "title": (item["content"][:60] or "Reviewed memory"), "event_type": "memory_event",
-            "summary": item["content"], "event_time": "", "people": [], "places": [],
-            "reminders": [], "action_items": [], "privacy_level": "normal" if action == "save" else "normal",
+            "title": (content[:60] or "Reviewed memory"), "event_type": "memory_event",
+            "category": "memory_event", "confidence": "high",
+            "summary": content, "event_time": "", "people": [], "places": [],
+            "reminders": [], "action_items": [], "privacy_level": "normal",
             "source": "review", "status": "saved", "created_at": now,
         })
+    # "delete" and "mark_private" only resolve the item without saving anything.
 
     await db.privacy_review_items.update_one(
         {"id": rid}, {"$set": {"status": "resolved", "resolved_action": action, "resolved_at": now}})

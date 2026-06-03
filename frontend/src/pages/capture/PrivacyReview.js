@@ -4,7 +4,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "../../components/common";
 import { Button } from "../../components/ui/button";
-import { ShieldQuestion, Bell, Sparkles, Lock, Trash2, Loader2, ArrowLeft } from "lucide-react";
+import { ShieldQuestion, Bell, Sparkles, Lock, Trash2, Loader2, ArrowLeft, Pencil, Check, X } from "lucide-react";
+import { Textarea } from "../../components/ui/textarea";
 import { toast } from "sonner";
 
 const ACTIONS = [
@@ -20,15 +21,23 @@ export default function PrivacyReview() {
   const navigate = useNavigate();
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
 
   const load = () => api.get("/capture/review").then(({ data }) => setItems(data));
   useEffect(() => { load(); }, []);
 
-  const act = async (item, action) => {
+  const act = async (item, action, edited_content) => {
     setBusy(item.id);
-    try { await api.post(`/capture/review/${item.id}/action`, { action }); toast.success("Updated"); load(); }
-    catch { toast.error("Could not update"); } finally { setBusy(null); }
+    try {
+      await api.post(`/capture/review/${item.id}/action`, { action, edited_content });
+      toast.success("Updated");
+      setEditingId(null);
+      load();
+    } catch { toast.error("Could not update"); } finally { setBusy(null); }
   };
+
+  const startEdit = (item) => { setEditingId(item.id); setEditText(item.content); };
 
   if (!items) return <div className="grid place-items-center py-20"><Loader2 className="w-7 h-7 animate-spin text-sky-600" /></div>;
 
@@ -47,16 +56,30 @@ export default function PrivacyReview() {
               <div className="flex items-start gap-2">
                 <ShieldQuestion className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-stone-800">{it.content}</p>
+                  {editingId === it.id ? (
+                    <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="rounded-xl" data-testid="review-edit-input" />
+                  ) : (
+                    <p className="text-stone-800">{it.content}</p>
+                  )}
                   <p className="text-xs text-stone-500 mt-1">Suggested: <span className="capitalize">{it.suggested_type}</span> · {it.reason}</p>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {ACTIONS.map((a) => (
-                  <Button key={a.key} size="sm" disabled={busy === it.id} onClick={() => act(it, a.key)} className={`rounded-xl text-white ${a.c}`} data-testid={`review-action-${a.key}`}>
-                    <a.icon className="w-4 h-4 mr-1" /> {a.label}
-                  </Button>
-                ))}
+                {editingId === it.id ? (
+                  <>
+                    <Button size="sm" disabled={busy === it.id} onClick={() => act(it, "edit", editText)} className="rounded-xl bg-emerald-600 hover:bg-emerald-700" data-testid="review-edit-save"><Check className="w-4 h-4 mr-1" /> Save edit</Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingId(null)} className="rounded-xl" data-testid="review-edit-cancel"><X className="w-4 h-4 mr-1" /> Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    {ACTIONS.map((a) => (
+                      <Button key={a.key} size="sm" disabled={busy === it.id} onClick={() => act(it, a.key)} className={`rounded-xl text-white ${a.c}`} data-testid={`review-action-${a.key}`}>
+                        <a.icon className="w-4 h-4 mr-1" /> {a.label}
+                      </Button>
+                    ))}
+                    <Button size="sm" variant="outline" onClick={() => startEdit(it)} className="rounded-xl" data-testid="review-action-edit"><Pencil className="w-4 h-4 mr-1" /> Edit</Button>
+                  </>
+                )}
               </div>
             </div>
           ))}

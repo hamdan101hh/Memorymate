@@ -55,7 +55,8 @@ export default function CaptureSession() {
 
   const setSessionStatus = async (s) => {
     setStatus(s);
-    try { await api.patch(`/capture/sessions/${id}`, { status: s }); } catch { /* noop */ }
+    try { await api.patch(`/capture/sessions/${id}`, { status: s }); }
+    catch (e) { console.error("Failed to update session status", e); toast.error("Couldn't update the session. Please try again."); }
   };
   const addNote = async () => {
     if (!note.trim()) return;

@@ -176,6 +176,32 @@ async def me(user: dict = Depends(get_current_user)):
     return user
 
 
+# Demo accounts are seeded in seed.py; passwords live ONLY on the backend.
+# The frontend asks for a role and the server issues a token for the matching demo user.
+DEMO_EMAILS = {
+    "patient": "omar@memorymate.app",
+    "caregiver": "sarah@memorymate.app",
+    "admin": os.environ.get("ADMIN_EMAIL", "admin@memorymate.app"),
+}
+
+
+class DemoLoginRequest(BaseModel):
+    role: str
+
+
+@router.post("/demo-login")
+async def demo_login(body: DemoLoginRequest):
+    email = DEMO_EMAILS.get(body.role)
+    if not email:
+        raise HTTPException(status_code=400, detail="Unknown demo role.")
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("is_active", True):
+        raise HTTPException(status_code=404, detail="Demo account is not available.")
+    await _log(user["id"], "demo_login", "user", user["id"])
+    token = create_access_token(user["id"], user["email"], user["role"])
+    return {"token": token, "user": await _public_user(user["id"])}
+
+
 class OnboardingRequest(BaseModel):
     consent_accepted: Optional[bool] = None
     emergency_contact_name: Optional[str] = None

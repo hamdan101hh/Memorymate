@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
 import { Switch } from "../../components/ui/switch";
 import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone, Radio, Video, EyeOff } from "lucide-react";
+import { toast } from "sonner";
 
 function useClock() {
   const [now, setNow] = useState(new Date());
@@ -68,11 +69,21 @@ export default function PatientHome() {
 
 function CaptureSection() {
   const [settings, setSettings] = useState(null);
-  useEffect(() => { api.get("/capture/settings").then(({ data }) => setSettings(data)); }, []);
+  useEffect(() => {
+    api.get("/capture/settings")
+      .then(({ data }) => setSettings(data))
+      .catch((e) => { console.error("Failed to load capture settings", e); setSettings({ private_mode: false }); });
+  }, []);
 
   const togglePrivate = async (v) => {
     setSettings((s) => ({ ...s, private_mode: v }));
-    try { await api.patch("/capture/settings", { private_mode: v }); } catch { /* noop */ }
+    try {
+      await api.patch("/capture/settings", { private_mode: v });
+    } catch (e) {
+      console.error("Failed to update Private Mode", e);
+      toast.error("Couldn't update Private Mode. Please try again.");
+      setSettings((s) => ({ ...s, private_mode: !v })); // revert on failure
+    }
   };
 
   return (

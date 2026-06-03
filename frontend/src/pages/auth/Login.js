@@ -10,13 +10,13 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const DEMOS = [
-  { label: "Patient (Omar)", email: "omar@memorymate.app", password: "Patient123!" },
-  { label: "Caregiver (Sarah)", email: "sarah@memorymate.app", password: "Caregiver123!" },
-  { label: "Admin", email: "admin@memorymate.app", password: "admin123" },
+  { label: "Patient (Omar)", role: "patient" },
+  { label: "Caregiver (Sarah)", role: "caregiver" },
+  { label: "Admin", role: "admin" },
 ];
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, demoLogin } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,16 +24,28 @@ export default function Login() {
 
   const go = (role) => navigate(role === "patient" ? "/patient" : role === "admin" ? "/admin" : "/caregiver");
 
-  const submit = async (e, creds) => {
+  const submit = async (e) => {
     e?.preventDefault();
-    const c = creds || { email, password };
     setLoading(true);
     try {
-      const user = await login(c.email, c.password);
+      const user = await login(email, password);
       toast.success(`Welcome back, ${user.full_name.split(" ")[0]}!`);
       go(user.role);
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemo = async (role) => {
+    setLoading(true);
+    try {
+      const user = await demoLogin(role);
+      toast.success(`Welcome, ${user.full_name.split(" ")[0]}!`);
+      go(user.role);
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || "Demo login failed");
     } finally {
       setLoading(false);
     }
@@ -76,9 +88,9 @@ export default function Login() {
             <p className="text-xs font-semibold uppercase tracking-wider text-stone-400 text-center">Quick demo login</p>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {DEMOS.map((d) => (
-                <button key={d.label} disabled={loading} onClick={(e) => submit(e, d)}
+                <button key={d.label} disabled={loading} onClick={() => handleDemo(d.role)}
                   className="text-xs font-medium border border-stone-200 rounded-xl py-2 px-1 hover:border-sky-400 hover:bg-sky-50 transition-colors"
-                  data-testid={`demo-login-${d.label.split(" ")[0].toLowerCase()}`}>
+                  data-testid={`demo-login-${d.role}`}>
                   {d.label}
                 </button>
               ))}

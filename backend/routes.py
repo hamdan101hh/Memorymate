@@ -160,11 +160,17 @@ async def transcribe(file: UploadFile = File(...), user: dict = Depends(get_curr
     data = await file.read()
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Recording is too large (max 25MB).")
+    if not data:
+        raise HTTPException(status_code=400, detail="The recording was empty. Please try again or type instead.")
+    # Initialise before all code paths so the response can never reference an undefined value.
+    text = ""
     try:
         text = await ai.transcribe_audio(data, file.filename or "audio.webm")
     except Exception as e:
         print(f"[transcribe] {e}")
         raise HTTPException(status_code=500, detail="Could not transcribe the audio. Please try again or type instead.")
+    if not (text or "").strip():
+        raise HTTPException(status_code=502, detail="No words were detected. Please try again or type instead.")
     return {"transcript": text}
 
 

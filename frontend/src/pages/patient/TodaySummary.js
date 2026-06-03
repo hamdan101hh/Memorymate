@@ -68,15 +68,15 @@ export default function TodaySummary() {
       </Section>
 
       <Section title="People you mentioned" icon={Users} color="text-rose-500" show={data.people.length > 0}>
-        {data.people.map((p, i) => <li key={i}>{p.name}{p.relationship ? ` (${p.relationship})` : ""}</li>)}
+        {data.people.map((p, i) => <li key={`person-${p.name}-${i}`}>{p.name}{p.relationship ? ` (${p.relationship})` : ""}</li>)}
       </Section>
 
       <Section title="Places mentioned" icon={MapPin} color="text-amber-600" show={data.places.length > 0}>
-        {data.places.map((p, i) => <li key={i}>{p.name}</li>)}
+        {data.places.map((p, i) => <li key={`place-${p.name}-${i}`}>{p.name}</li>)}
       </Section>
 
       <Section title="Medication notes" icon={Pill} color="text-emerald-600" show={data.medications.length > 0}>
-        {data.medications.map((m, i) => <li key={i}>{m.name}{m.instruction ? ` — ${m.instruction}` : ""}</li>)}
+        {data.medications.map((m, i) => <li key={`med-${m.name}-${i}`}>{m.name}{m.instruction ? ` — ${m.instruction}` : ""}</li>)}
       </Section>
     </div>
   );

@@ -332,10 +332,10 @@ class TestAdmin:
         # toggle active off then on
         r1 = requests.patch(f"{API}/admin/users/{target['id']}", json={"is_active": False},
                             headers=_headers(admin_token), timeout=15)
-        assert r1.status_code == 200 and r1.json()["is_active"] is False
+        assert r1.status_code == 200 and r1.json()["is_active"] == False
         r2 = requests.patch(f"{API}/admin/users/{target['id']}", json={"is_active": True},
                             headers=_headers(admin_token), timeout=15)
-        assert r2.json()["is_active"] is True
+        assert r2.json()["is_active"] == True
 
     def test_admin_logs(self, admin_token):
         r = requests.get(f"{API}/admin/logs", headers=_headers(admin_token), timeout=15)
