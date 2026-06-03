@@ -2,7 +2,7 @@
 //
 // SECURITY NOTE: the token is kept in localStorage for simplicity. localStorage is
 // readable by any JavaScript on the page, so it carries an XSS risk. We mitigate this by
-// never rendering untrusted HTML (no dangerouslySetInnerHTML on user-provided content).
+// never injecting untrusted HTML into the DOM (no raw HTML rendering of user content).
 // For a hardened deployment, move to httpOnly + Secure + SameSite cookies issued by the
 // backend (JS cannot read those) together with CSRF protection. Keeping ALL token access
 // in this one module makes that migration a single-file change.

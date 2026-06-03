@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
 import { EmptyState } from "../../components/common";
 import { Button } from "../../components/ui/button";
@@ -13,8 +13,8 @@ const TONE = {
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState(null);
-  const load = () => api.get("/alerts").then(({ data }) => setAlerts(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/alerts").then(({ data }) => setAlerts(data)), []);
+  useEffect(() => { load(); }, [load]);
 
   const resolve = async (a) => {
     try { await api.patch(`/alerts/${a.id}/resolve`); toast.success("Alert resolved"); load(); }

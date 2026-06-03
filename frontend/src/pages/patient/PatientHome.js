@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
+import { logError } from "../../lib/logger";
 import { Switch } from "../../components/ui/switch";
 import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone, Radio, Video, EyeOff } from "lucide-react";
 import { toast } from "sonner";
@@ -72,7 +73,7 @@ function CaptureSection() {
   useEffect(() => {
     api.get("/capture/settings")
       .then(({ data }) => setSettings(data))
-      .catch((e) => { console.error("Failed to load capture settings", e); setSettings({ private_mode: false }); });
+      .catch((e) => { logError("Failed to load capture settings", e); setSettings({ private_mode: false }); });
   }, []);
 
   const togglePrivate = async (v) => {
@@ -80,7 +81,7 @@ function CaptureSection() {
     try {
       await api.patch("/capture/settings", { private_mode: v });
     } catch (e) {
-      console.error("Failed to update Private Mode", e);
+      logError("Failed to update Private Mode", e);
       toast.error("Couldn't update Private Mode. Please try again.");
       setSettings((s) => ({ ...s, private_mode: !v })); // revert on failure
     }

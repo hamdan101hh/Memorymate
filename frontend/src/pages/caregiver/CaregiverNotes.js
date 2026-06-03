@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
 import { EmptyState } from "../../components/common";
 import { Button } from "../../components/ui/button";
@@ -14,8 +14,8 @@ export default function CaregiverNotes() {
   const [visible, setVisible] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get("/notes").then(({ data }) => setNotes(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/notes").then(({ data }) => setNotes(data)), []);
+  useEffect(() => { load(); }, [load]);
 
   const add = async () => {
     if (!text.trim()) return;

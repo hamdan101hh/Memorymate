@@ -172,6 +172,91 @@ class ProcessBody(BaseModel):
     transcript: str
 
 
+async def _route_event_to_tables(pid: str, user_id: str, etype: str, ev: dict, now: str) -> None:
+    """Route a classified capture event into the EXISTING domain tables (no duplicate tables)."""
+    if etype == "appointment":
+        await db.appointments.insert_one({
+            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
+            "title": ev.get("title", "Appointment"), "doctor_or_clinic": "",
+            "date": ev.get("event_time", ""), "time": "",
+            "location": (ev.get("places") or [""])[0], "notes": ev.get("summary", ""),
+            "transport_notes": "", "reminder_time": "", "created_at": now,
+        })
+    elif etype == "medication":
+        await db.medications.insert_one({
+            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
+            "medication_name": ev.get("title", "Medication note"), "dosage": "", "frequency": "",
+            "time_of_day": "morning", "instructions": ev.get("summary", ""),
+            "start_date": "", "end_date": "",
+            "notes": "From capture — please confirm with a doctor or pharmacist.",
+            "priority": "medium", "created_at": now,
+        })
+    elif etype == "person_place_update":
+        for nm in ev.get("people", []):
+            if nm and not await db.important_people.find_one({"patient_id": pid, "name": nm}):
+                await db.important_people.insert_one({
+                    "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
+                    "name": nm, "relationship": "", "photo_url": None, "phone": None,
+                    "description": ev.get("summary", ""), "explanation_for_patient": "",
+                    "notes": "Added from a capture session.", "last_mentioned": now[:10], "created_at": now,
+                })
+        for pl in ev.get("places", []):
+            if pl and not await db.important_places.find_one({"patient_id": pid, "name": pl}):
+                await db.important_places.insert_one({
+                    "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
+                    "name": pl, "type": "custom", "address": "", "description": ev.get("summary", ""),
+                    "instructions": "", "notes": "Added from a capture session.", "created_at": now,
+                })
+
+
+async def _persist_event(pid: str, sid: str, user_id: str, ev: dict, now: str, session_title: str) -> dict:
+    """Save one classified memory event, its reminders, and route it to the domain tables."""
+    etype = ev.get("event_type", "memory_event")
+    doc = {
+        "id": str(uuid.uuid4()), "patient_id": pid, "session_id": sid,
+        "title": ev.get("title", "Memory event"), "event_type": etype,
+        "category": etype, "confidence": ev.get("confidence", "medium"),
+        "summary": ev.get("summary", ""), "event_time": ev.get("event_time", ""),
+        "people": ev.get("people", []), "places": ev.get("places", []),
+        "reminders": ev.get("reminders", []), "action_items": ev.get("action_items", []),
+        "privacy_level": ev.get("privacy_level", "normal"), "source": "capture",
+        "status": "saved", "created_at": now,
+    }
+    await db.memory_events.insert_one(doc)
+    for r in ev.get("reminders", []):
+        await db.reminders.insert_one({
+            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
+            "title": r, "description": f"From capture: {session_title}",
+            "category": "appointment" if etype == "appointment" else "task",
+            "priority": "medium", "due_date": "", "due_time": "", "repeat_rule": "none",
+            "status": "pending", "source": "ai", "created_at": now, "completed_at": None,
+        })
+    await _route_event_to_tables(pid, user_id, etype, ev, now)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+async def _persist_reviews(pid: str, sid: str, review_items: list, now: str) -> list:
+    """Save uncertain / sensitive snippets to the privacy review queue."""
+    created = []
+    for ri in review_items:
+        doc = {
+            "id": str(uuid.uuid4()), "patient_id": pid, "session_id": sid,
+            "content": ri.get("content", ""), "suggested_type": ri.get("suggested_type", "memory_event"),
+            "reason": ri.get("reason", ""), "status": "pending", "resolved_action": None, "created_at": now,
+        }
+        await db.privacy_review_items.insert_one(doc)
+        created.append({k: v for k, v in doc.items() if k != "_id"})
+    return created
+
+
+async def _finalize_session(s: dict, sid: str, transcript: str, now: str, meeting_summary) -> None:
+    """Complete the session; persist the transcript only when the storage policy allows it."""
+    set_doc = {"status": "completed", "end_time": now, "meeting_summary": meeting_summary}
+    if s.get("transcript_storage_mode") in ("transcript", "raw_audio"):
+        set_doc["stored_transcript"] = transcript
+    await db.capture_sessions.update_one({"id": sid}, {"$set": set_doc})
+
+
 @router.post("/sessions/{sid}/process")
 async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
@@ -187,93 +272,16 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
     meta = {"title": s["title"], "purpose": s.get("purpose", ""), "people_involved": s.get("people_involved", "")}
     now = NOW()
 
-    # AI filter + divide into discrete events
+    # AI filter + divide into discrete, classified events.
     result = await ai.filter_capture_transcript(body.transcript, meta)
-    created_events = []
-    for ev in result.get("events", []):
-        eid = str(uuid.uuid4())
-        etype = ev.get("event_type", "memory_event")
-        doc = {
-            "id": eid, "patient_id": pid, "session_id": sid,
-            "title": ev.get("title", "Memory event"), "event_type": etype,
-            "category": etype, "confidence": ev.get("confidence", "medium"),
-            "summary": ev.get("summary", ""), "event_time": ev.get("event_time", ""),
-            "people": ev.get("people", []), "places": ev.get("places", []),
-            "reminders": ev.get("reminders", []), "action_items": ev.get("action_items", []),
-            "privacy_level": ev.get("privacy_level", "normal"), "source": "capture",
-            "status": "saved", "created_at": now,
-        }
-        await db.memory_events.insert_one(doc)
-        created_events.append({k: v for k, v in doc.items() if k != "_id"})
+    created_events = [await _persist_event(pid, sid, user["id"], ev, now, s["title"])
+                      for ev in result.get("events", [])]
+    created_reviews = await _persist_reviews(pid, sid, result.get("review_items", []), now)
 
-        # Feed extracted reminders into the existing reminders collection
-        for r in ev.get("reminders", []):
-            await db.reminders.insert_one({
-                "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-                "title": r, "description": f"From capture: {s['title']}",
-                "category": "appointment" if etype == "appointment" else "task",
-                "priority": "medium", "due_date": "", "due_time": "", "repeat_rule": "none",
-                "status": "pending", "source": "ai", "created_at": now, "completed_at": None,
-            })
+    # Meeting mode -> structured meeting summary stored on the session.
+    meeting_summary = await ai.summarize_meeting(body.transcript, meta) if s.get("mode") == "meeting" else None
 
-        # Route classified events into the EXISTING domain tables (no new duplicate tables).
-        if etype == "appointment":
-            await db.appointments.insert_one({
-                "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-                "title": ev.get("title", "Appointment"), "doctor_or_clinic": "",
-                "date": ev.get("event_time", ""), "time": "",
-                "location": (ev.get("places") or [""])[0], "notes": ev.get("summary", ""),
-                "transport_notes": "", "reminder_time": "", "created_at": now,
-            })
-        elif etype == "medication":
-            await db.medications.insert_one({
-                "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-                "medication_name": ev.get("title", "Medication note"), "dosage": "", "frequency": "",
-                "time_of_day": "morning", "instructions": ev.get("summary", ""),
-                "start_date": "", "end_date": "",
-                "notes": "From capture — please confirm with a doctor or pharmacist.",
-                "priority": "medium", "created_at": now,
-            })
-        elif etype == "person_place_update":
-            for nm in ev.get("people", []):
-                if nm and not await db.important_people.find_one({"patient_id": pid, "name": nm}):
-                    await db.important_people.insert_one({
-                        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-                        "name": nm, "relationship": "", "photo_url": None, "phone": None,
-                        "description": ev.get("summary", ""), "explanation_for_patient": "",
-                        "notes": "Added from a capture session.", "last_mentioned": now[:10], "created_at": now,
-                    })
-            for pl in ev.get("places", []):
-                if pl and not await db.important_places.find_one({"patient_id": pid, "name": pl}):
-                    await db.important_places.insert_one({
-                        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-                        "name": pl, "type": "custom", "address": "", "description": ev.get("summary", ""),
-                        "instructions": "", "notes": "Added from a capture session.", "created_at": now,
-                    })
-
-    # Uncertain / sensitive snippets -> privacy review queue
-    created_reviews = []
-    for ri in result.get("review_items", []):
-        rid = str(uuid.uuid4())
-        doc = {
-            "id": rid, "patient_id": pid, "session_id": sid,
-            "content": ri.get("content", ""), "suggested_type": ri.get("suggested_type", "memory_event"),
-            "reason": ri.get("reason", ""), "status": "pending", "resolved_action": None, "created_at": now,
-        }
-        await db.privacy_review_items.insert_one(doc)
-        created_reviews.append({k: v for k, v in doc.items() if k != "_id"})
-
-    # Meeting mode -> structured meeting summary stored on session
-    meeting_summary = None
-    if s.get("mode") == "meeting":
-        meeting_summary = await ai.summarize_meeting(body.transcript, meta)
-
-    # Storage policy: only persist transcript when storage mode allows it
-    set_doc = {"status": "completed", "end_time": now, "meeting_summary": meeting_summary}
-    if s.get("transcript_storage_mode") in ("transcript", "raw_audio"):
-        set_doc["stored_transcript"] = body.transcript
-    await db.capture_sessions.update_one({"id": sid}, {"$set": set_doc})
-
+    await _finalize_session(s, sid, body.transcript, now, meeting_summary)
     return {
         "events": created_events,
         "review_items": created_reviews,

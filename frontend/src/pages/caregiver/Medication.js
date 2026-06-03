@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
 import { EmptyState } from "../../components/common";
 import { Pick } from "./CgReminders";
@@ -19,8 +19,8 @@ export default function Medication() {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get("/medications").then(({ data }) => setMeds(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/medications").then(({ data }) => setMeds(data)), []);
+  useEffect(() => { load(); }, [load]);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v?.target ? v.target.value : v }));
 
   const add = async () => {

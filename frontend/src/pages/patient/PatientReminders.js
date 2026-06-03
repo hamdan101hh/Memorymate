@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import api from "../../lib/api";
 import { PatientPageHeader } from "./PatientLayout";
@@ -16,8 +16,8 @@ export default function PatientReminders() {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
 
-  const load = () => api.get("/reminders").then(({ data }) => setReminders(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/reminders").then(({ data }) => setReminders(data)), []);
+  useEffect(() => { load(); }, [load]);
 
   const mark = async (r, status) => {
     setReminders((rs) => rs.map((x) => (x.id === r.id ? { ...x, status } : x)));

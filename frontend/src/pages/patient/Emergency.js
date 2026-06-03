@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
+import { logError } from "../../lib/logger";
 import { PatientPageHeader } from "./PatientLayout";
 import { Button } from "../../components/ui/button";
 import { Phone, MessageSquare, ShieldAlert, Loader2, RefreshCw } from "lucide-react";
@@ -9,18 +10,18 @@ export default function Emergency() {
   const [patient, setPatient] = useState(null);
   const [error, setError] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     setError(false);
     setPatient(null);
     api.get("/patient")
       .then(({ data }) => setPatient(data))
       .catch((e) => {
         // Emergency must never fail silently — surface the problem and still show guidance.
-        console.error("Failed to load emergency contact", e);
+        logError("Failed to load emergency contact", e);
         setError(true);
       });
-  };
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const raise = () => {
     // Best-effort in-app notification. If it fails we log it and tell the user clearly,
@@ -32,7 +33,7 @@ export default function Emergency() {
     })
       .then(() => toast.success("Your caregiver has been notified in the app."))
       .catch((e) => {
-        console.error("Failed to send in-app alert", e);
+        logError("Failed to send in-app alert", e);
         toast.error("We couldn't notify your caregiver automatically. Please use the number below.");
       });
   };

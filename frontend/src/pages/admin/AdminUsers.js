@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
 import { Pick } from "../caregiver/CgReminders";
 import { Button } from "../../components/ui/button";
@@ -8,8 +8,8 @@ import { toast } from "sonner";
 
 export default function AdminUsers() {
   const [users, setUsers] = useState(null);
-  const load = () => api.get("/admin/users").then(({ data }) => setUsers(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/admin/users").then(({ data }) => setUsers(data)), []);
+  useEffect(() => { load(); }, [load]);
 
   const changeRole = async (u, role) => {
     try { await api.patch(`/admin/users/${u.id}`, { role }); toast.success("Role updated"); load(); }

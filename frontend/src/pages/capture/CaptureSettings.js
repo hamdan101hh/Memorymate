@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -14,8 +14,8 @@ export default function CaptureSettings() {
   const navigate = useNavigate();
   const [s, setS] = useState(null);
 
-  const load = () => api.get("/capture/settings").then(({ data }) => setS(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/capture/settings").then(({ data }) => setS(data)), []);
+  useEffect(() => { load(); }, [load]);
 
   const update = async (patch) => {
     setS((cur) => ({ ...cur, ...patch }));

@@ -143,7 +143,7 @@ function Extracted({ icon: Icon, label, items, color }) {
       <div className={`flex items-center gap-2 font-semibold ${color}`}><Icon className="w-5 h-5" /> {label}</div>
       <ul className="mt-3 space-y-2">
         {items.map((it, i) => (
-          <li key={i} className="text-lg text-stone-700 flex items-start gap-2"><span className="text-stone-300 mt-1">•</span> {it}</li>
+          <li key={`${label}-${i}`} className="text-lg text-stone-700 flex items-start gap-2"><span className="text-stone-300 mt-1">•</span> {it}</li>
         ))}
       </ul>
     </div>

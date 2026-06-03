@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
 import { EmptyState } from "../../components/common";
 import { Button } from "../../components/ui/button";
@@ -17,8 +17,8 @@ export default function CgPeople() {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get("/people").then(({ data }) => setPeople(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/people").then(({ data }) => setPeople(data)), []);
+  useEffect(() => { load(); }, [load]);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const add = async () => {

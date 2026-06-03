@@ -1,51 +1,53 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { FullPageLoader } from "./components/common";
 import { Toaster } from "./components/ui/sonner";
 
-import Landing from "./pages/public/Landing";
-import About from "./pages/public/About";
-import Privacy from "./pages/public/Privacy";
-import Safety from "./pages/public/Safety";
-import Login from "./pages/auth/Login";
-import Signup from "./pages/auth/Signup";
-import Onboarding from "./pages/Onboarding";
+// Code-split every page/layout so the initial bundle stays small. URLs/behavior unchanged.
+const Landing = lazy(() => import("./pages/public/Landing"));
+const About = lazy(() => import("./pages/public/About"));
+const Privacy = lazy(() => import("./pages/public/Privacy"));
+const Safety = lazy(() => import("./pages/public/Safety"));
+const Login = lazy(() => import("./pages/auth/Login"));
+const Signup = lazy(() => import("./pages/auth/Signup"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
 
-import PatientLayout from "./pages/patient/PatientLayout";
-import PatientHome from "./pages/patient/PatientHome";
-import RecordMemory from "./pages/patient/RecordMemory";
-import Assistant from "./pages/patient/Assistant";
-import TodaySummary from "./pages/patient/TodaySummary";
-import PatientReminders from "./pages/patient/PatientReminders";
-import PatientPeople from "./pages/patient/PatientPeople";
-import PatientPlaces from "./pages/patient/PatientPlaces";
-import Emergency from "./pages/patient/Emergency";
-import PatientSettings from "./pages/patient/PatientSettings";
+const PatientLayout = lazy(() => import("./pages/patient/PatientLayout"));
+const PatientHome = lazy(() => import("./pages/patient/PatientHome"));
+const RecordMemory = lazy(() => import("./pages/patient/RecordMemory"));
+const Assistant = lazy(() => import("./pages/patient/Assistant"));
+const TodaySummary = lazy(() => import("./pages/patient/TodaySummary"));
+const PatientReminders = lazy(() => import("./pages/patient/PatientReminders"));
+const PatientPeople = lazy(() => import("./pages/patient/PatientPeople"));
+const PatientPlaces = lazy(() => import("./pages/patient/PatientPlaces"));
+const Emergency = lazy(() => import("./pages/patient/Emergency"));
+const PatientSettings = lazy(() => import("./pages/patient/PatientSettings"));
 
-import CaregiverLayout from "./pages/caregiver/CaregiverLayout";
-import CaregiverDashboard from "./pages/caregiver/CaregiverDashboard";
-import PatientOverview from "./pages/caregiver/PatientOverview";
-import Timeline from "./pages/caregiver/Timeline";
-import CgReminders from "./pages/caregiver/CgReminders";
-import Medication from "./pages/caregiver/Medication";
-import Appointments from "./pages/caregiver/Appointments";
-import CgPeople from "./pages/caregiver/CgPeople";
-import CgPlaces from "./pages/caregiver/CgPlaces";
-import Alerts from "./pages/caregiver/Alerts";
-import CaregiverNotes from "./pages/caregiver/CaregiverNotes";
-import CgSettings from "./pages/caregiver/CgSettings";
+const CaregiverLayout = lazy(() => import("./pages/caregiver/CaregiverLayout"));
+const CaregiverDashboard = lazy(() => import("./pages/caregiver/CaregiverDashboard"));
+const PatientOverview = lazy(() => import("./pages/caregiver/PatientOverview"));
+const Timeline = lazy(() => import("./pages/caregiver/Timeline"));
+const CgReminders = lazy(() => import("./pages/caregiver/CgReminders"));
+const Medication = lazy(() => import("./pages/caregiver/Medication"));
+const Appointments = lazy(() => import("./pages/caregiver/Appointments"));
+const CgPeople = lazy(() => import("./pages/caregiver/CgPeople"));
+const CgPlaces = lazy(() => import("./pages/caregiver/CgPlaces"));
+const Alerts = lazy(() => import("./pages/caregiver/Alerts"));
+const CaregiverNotes = lazy(() => import("./pages/caregiver/CaregiverNotes"));
+const CgSettings = lazy(() => import("./pages/caregiver/CgSettings"));
 
-import AdminLayout from "./pages/admin/AdminLayout";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminUsers from "./pages/admin/AdminUsers";
-import AdminCollections from "./pages/admin/AdminCollections";
-import AdminLogs from "./pages/admin/AdminLogs";
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminCollections = lazy(() => import("./pages/admin/AdminCollections"));
+const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
 
-import CaptureStart from "./pages/capture/CaptureStart";
-import CaptureSession from "./pages/capture/CaptureSession";
-import CaptureSessions from "./pages/capture/CaptureSessions";
-import PrivacyReview from "./pages/capture/PrivacyReview";
-import CaptureSettings from "./pages/capture/CaptureSettings";
+const CaptureStart = lazy(() => import("./pages/capture/CaptureStart"));
+const CaptureSession = lazy(() => import("./pages/capture/CaptureSession"));
+const CaptureSessions = lazy(() => import("./pages/capture/CaptureSessions"));
+const PrivacyReview = lazy(() => import("./pages/capture/PrivacyReview"));
+const CaptureSettings = lazy(() => import("./pages/capture/CaptureSettings"));
 
 function homePath(role) {
   if (role === "patient") return "/patient";
@@ -134,7 +136,9 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <AppRoutes />
+        <Suspense fallback={<FullPageLoader />}>
+          <AppRoutes />
+        </Suspense>
         <Toaster position="top-center" richColors />
       </BrowserRouter>
     </AuthProvider>

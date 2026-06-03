@@ -57,7 +57,7 @@ class TestCaptureSettings:
                   "low_battery_auto_stop", "wifi_only", "local_processing",
                   "default_transcript_storage_mode"):
             assert k in d
-        assert d["private_mode"] == False
+        assert not d["private_mode"]
 
     def test_patch_settings_persists(self, patient_token):
         r = requests.patch(f"{API}/capture/settings",
@@ -67,7 +67,7 @@ class TestCaptureSettings:
         assert r.status_code == 200
         d = r.json()
         assert d["auto_stop_minutes"] == 45
-        assert d["wifi_only"] == True
+        assert d["wifi_only"]
         assert d["default_transcript_storage_mode"] == "transcript"
         # GET to verify persistence
         g = requests.get(f"{API}/capture/settings", headers=_h(patient_token), timeout=15)
@@ -99,7 +99,7 @@ class TestCaptureSessions:
         assert r.status_code == 200, r.text
         d = r.json()
         assert d["id"] and d["status"] == "active" and d["mode"] == "capture"
-        assert d["consent_confirmed"] == True
+        assert d["consent_confirmed"]
         # cleanup: stop the session
         requests.patch(f"{API}/capture/sessions/{d['id']}",
                        json={"status": "stopped"}, headers=_h(patient_token), timeout=15)
@@ -108,7 +108,7 @@ class TestCaptureSessions:
         # turn on private mode
         u = requests.patch(f"{API}/capture/settings", json={"private_mode": True},
                            headers=_h(patient_token), timeout=15)
-        assert u.status_code == 200 and u.json()["private_mode"] == True
+        assert u.status_code == 200 and u.json()["private_mode"]
         # try to start a session -> 423
         r = requests.post(f"{API}/capture/sessions",
                           json={"mode": "capture", "title": "TEST blocked",
@@ -125,7 +125,7 @@ class TestCaptureSessions:
         sid = c.json()["id"]
         n = requests.post(f"{API}/capture/sessions/{sid}/note",
                          json={"note": "manual annotation"}, headers=_h(patient_token), timeout=15)
-        assert n.status_code == 200 and n.json()["ok"] == True
+        assert n.status_code == 200 and n.json()["ok"]
         # pause
         p = requests.patch(f"{API}/capture/sessions/{sid}", json={"status": "paused"},
                           headers=_h(patient_token), timeout=15)
@@ -240,7 +240,7 @@ class TestPrivacyReview:
         rid = items[0]["id"]
         r = requests.post(f"{API}/capture/review/{rid}/action",
                           json={"action": "convert_reminder"}, headers=_h(patient_token), timeout=15)
-        assert r.status_code == 200 and r.json()["ok"] == True
+        assert r.status_code == 200 and r.json()["ok"]
         # confirm it is no longer pending
         remaining = requests.get(f"{API}/capture/review?status=pending",
                                  headers=_h(patient_token), timeout=15).json()

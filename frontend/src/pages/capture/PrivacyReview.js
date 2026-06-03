@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -24,8 +24,8 @@ export default function PrivacyReview() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
 
-  const load = () => api.get("/capture/review").then(({ data }) => setItems(data));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/capture/review").then(({ data }) => setItems(data)), []);
+  useEffect(() => { load(); }, [load]);
 
   const act = async (item, action, edited_content) => {
     setBusy(item.id);

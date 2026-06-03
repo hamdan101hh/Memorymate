@@ -40,7 +40,7 @@ export default function PatientOverview() {
         </Info>
         <Info title="Connected caregivers" icon={Users}>
           {patient.caregivers?.length ? patient.caregivers.map((c, i) => (
-            <p key={i} className="text-stone-700"><span className="font-medium">{c.full_name}</span> — {c.relationship} {c.phone && `· ${c.phone}`}</p>
+            <p key={c.email || `${c.full_name}-${i}`} className="text-stone-700"><span className="font-medium">{c.full_name}</span> — {c.relationship} {c.phone && `· ${c.phone}`}</p>
           )) : <p className="text-stone-400">No caregivers linked.</p>}
         </Info>
       </div>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import api from "../lib/api";
 import { getToken, setToken, clearToken, isTokenExpired } from "../lib/token";
 
@@ -36,42 +36,43 @@ export function AuthProvider({ children }) {
     localStorage.setItem("mm_high_contrast", settings.highContrast ? "1" : "0");
   }, [settings]);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
     setToken(data.token);
     setUser(data.user);
     return data.user;
-  };
+  }, []);
 
   // Logs into a seeded demo account. No passwords live in the frontend — the backend
   // resolves the role to a demo user and issues the token.
-  const demoLogin = async (role) => {
+  const demoLogin = useCallback(async (role) => {
     const { data } = await api.post("/auth/demo-login", { role });
     setToken(data.token);
     setUser(data.user);
     return data.user;
-  };
+  }, []);
 
-  const register = async (payload) => {
+  const register = useCallback(async (payload) => {
     const { data } = await api.post("/auth/register", payload);
     setToken(data.token);
     setUser(data.user);
     return data.user;
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     clearToken();
     setUser(false);
-  };
+  }, []);
 
-  const refreshUser = loadMe;
-  const updateSettings = (patch) => setSettings((s) => ({ ...s, ...patch }));
+  const updateSettings = useCallback((patch) => setSettings((s) => ({ ...s, ...patch })), []);
 
-  return (
-    <AuthContext.Provider value={{ user, login, demoLogin, register, logout, refreshUser, setUser, settings, updateSettings }}>
-      {children}
-    </AuthContext.Provider>
+  // Memoized so consumers don't re-render unless something they use actually changes.
+  const value = useMemo(
+    () => ({ user, login, demoLogin, register, logout, refreshUser: loadMe, setUser, settings, updateSettings }),
+    [user, settings, login, demoLogin, register, logout, loadMe, updateSettings]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => useContext(AuthContext);

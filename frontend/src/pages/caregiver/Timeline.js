@@ -45,6 +45,6 @@ const TONE = { violet: "bg-violet-50 text-violet-700", rose: "bg-rose-50 text-ro
 function Tags({ icon: Icon, items, color }) {
   if (!items || items.length === 0) return null;
   return items.map((it, i) => (
-    <span key={i} className={`inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 ${TONE[color]}`}><Icon className="w-3.5 h-3.5" /> {it}</span>
+    <span key={`${color}-${it}-${i}`} className={`inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 ${TONE[color]}`}><Icon className="w-3.5 h-3.5" /> {it}</span>
   ));
 }
