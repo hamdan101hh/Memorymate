@@ -1,0 +1,191 @@
+import { Link } from "react-router-dom";
+import { Logo, Disclaimer } from "../../components/common";
+import { Button } from "../../components/ui/button";
+import {
+  Mic, Sparkles, Bell, Users, MapPin, ShieldCheck, HeartHandshake,
+  Pill, CalendarClock, ArrowRight, Phone, Check,
+} from "lucide-react";
+
+const HERO_IMG =
+  "https://images.unsplash.com/photo-1765896387387-0538bc9f997e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwyfHxlbGRlcmx5JTIwc2VuaW9yJTIwc21pbGluZyUyMGNhcmVnaXZlciUyMGhvbGRpbmclMjBoYW5kc3xlbnwwfHx8fDE3ODA0ODk4MDZ8MA&ixlib=rb-4.1.0&q=85";
+const FAMILY_IMG =
+  "https://images.unsplash.com/photo-1758686254056-6cd980b9aaee?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHw0fHxmYW1pbHklMjBsaWZlc3R5bGUlMjBoYXBweSUyMHNlbmlvciUyMHJlbGF4aW5nfGVufDB8fHx8MTc4MDQ4OTgwNnww&ixlib=rb-4.1.0&q=85";
+
+function Nav() {
+  return (
+    <header className="sticky top-0 z-40 bg-stone-50/85 backdrop-blur-md border-b border-stone-200">
+      <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
+        <Logo />
+        <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600">
+          <a href="#how" className="hover:text-stone-900 transition-colors">How it works</a>
+          <a href="#features" className="hover:text-stone-900 transition-colors">Features</a>
+          <a href="#safety" className="hover:text-stone-900 transition-colors">Safety</a>
+          <Link to="/about" className="hover:text-stone-900 transition-colors">About</Link>
+        </nav>
+        <div className="flex items-center gap-2">
+          <Link to="/login"><Button variant="ghost" className="rounded-xl" data-testid="nav-login-btn">Log in</Button></Link>
+          <Link to="/signup"><Button className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="nav-signup-btn">Get Started</Button></Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+const STEPS = [
+  { n: "1", t: "Record or type a memory", d: "Speak or write what happened during the day — visitors, tasks, appointments." },
+  { n: "2", t: "AI creates a simple summary", d: "MemoryMate turns it into a gentle, easy-to-read summary." },
+  { n: "3", t: "Reminders & details are saved", d: "People, places, medication and appointments are organized for you." },
+  { n: "4", t: "Caregivers stay updated", d: "Family can follow along and add notes, reminders and care details." },
+];
+
+const FEATURES = [
+  { icon: CalendarClock, t: "Daily memory timeline", d: "Morning, afternoon and evening, gently organized." },
+  { icon: Sparkles, t: "AI summaries", d: "Simple, calm summaries of each memory." },
+  { icon: Pill, t: "Medication reminders", d: "Caregivers add schedules, confirmed with a doctor." },
+  { icon: Users, t: "Caregiver dashboard", d: "A clean view of everything that matters." },
+  { icon: MapPin, t: "Important people & places", d: "Recognize family and familiar locations." },
+  { icon: Phone, t: "Emergency contact", d: "One tap to reach a trusted person." },
+];
+
+export default function Landing() {
+  return (
+    <div className="min-h-screen bg-stone-50 text-stone-900">
+      <Nav />
+
+      {/* Hero */}
+      <section className="max-w-6xl mx-auto px-5 pt-12 pb-16 md:pt-20 md:pb-24 grid md:grid-cols-2 gap-12 items-center">
+        <div className="mm-fade-up">
+          <span className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 bg-sky-100 px-3 py-1.5 rounded-full">
+            <HeartHandshake className="w-4 h-4" /> Helping families remember, care, and stay connected
+          </span>
+          <h1 className="mt-5 font-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
+            An AI memory assistant for families and caregivers.
+          </h1>
+          <p className="mt-5 text-lg sm:text-xl text-stone-600 leading-relaxed max-w-xl">
+            MemoryMate helps organize memories, reminders, medication schedules, appointments,
+            and caregiver notes in one simple app.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link to="/signup">
+              <Button size="lg" className="rounded-2xl h-14 px-8 text-base bg-sky-600 hover:bg-sky-700 shadow-md" data-testid="hero-get-started-btn">
+                Get Started <ArrowRight className="w-5 h-5 ml-1" />
+              </Button>
+            </Link>
+            <Link to="/login">
+              <Button size="lg" variant="outline" className="rounded-2xl h-14 px-8 text-base border-stone-300" data-testid="hero-demo-btn">
+                View Demo
+              </Button>
+            </Link>
+          </div>
+          <p className="mt-5 text-sm text-stone-500 flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600" /> Supportive, not diagnostic — no medical claims.
+          </p>
+        </div>
+        <div className="relative mm-fade-up" style={{ animationDelay: "0.1s" }}>
+          <div className="absolute -inset-4 bg-gradient-to-tr from-sky-200/60 to-emerald-200/50 rounded-[2.5rem] blur-2xl" />
+          <img src={HERO_IMG} alt="Caregiver with senior" className="relative rounded-[2rem] shadow-xl w-full object-cover aspect-[4/3]" />
+          <div className="absolute -bottom-5 -left-3 bg-white rounded-2xl shadow-lg border border-stone-100 p-4 flex items-center gap-3 max-w-[230px]">
+            <span className="grid place-items-center w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700"><Bell className="w-5 h-5" /></span>
+            <div>
+              <p className="text-sm font-semibold leading-tight">Take morning medicine</p>
+              <p className="text-xs text-stone-500">Today · 9:00 AM</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section id="how" className="bg-white border-y border-stone-200 py-20">
+        <div className="max-w-6xl mx-auto px-5">
+          <h2 className="font-heading text-3xl sm:text-4xl font-bold text-center">How it works</h2>
+          <p className="text-center text-stone-600 mt-3 max-w-2xl mx-auto">Four gentle steps from a spoken memory to an organized, shared care record.</p>
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {STEPS.map((s) => (
+              <div key={s.n} className="rounded-2xl border border-stone-200 p-6 hover:border-sky-300 hover:shadow-md transition-all">
+                <span className="grid place-items-center w-11 h-11 rounded-xl bg-sky-600 text-white font-heading font-bold text-lg">{s.n}</span>
+                <h3 className="mt-4 font-heading font-semibold text-lg">{s.t}</h3>
+                <p className="mt-2 text-stone-600 text-sm leading-relaxed">{s.d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="py-20 max-w-6xl mx-auto px-5">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div>
+            <img src={FAMILY_IMG} alt="Family staying connected" className="rounded-[2rem] shadow-lg w-full object-cover aspect-[5/4]" />
+          </div>
+          <div>
+            <h2 className="font-heading text-3xl sm:text-4xl font-bold">Everything in one calm place</h2>
+            <p className="mt-3 text-stone-600">Designed to be simple for the person using it, and reassuring for the family caring for them.</p>
+            <div className="mt-8 grid sm:grid-cols-2 gap-5">
+              {FEATURES.map((f) => (
+                <div key={f.t} className="flex gap-3">
+                  <span className="shrink-0 grid place-items-center w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700"><f.icon className="w-5 h-5" /></span>
+                  <div>
+                    <h3 className="font-semibold">{f.t}</h3>
+                    <p className="text-sm text-stone-600">{f.d}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Safety */}
+      <section id="safety" className="bg-stone-900 text-white py-20">
+        <div className="max-w-3xl mx-auto px-5 text-center">
+          <span className="grid place-items-center w-14 h-14 rounded-2xl bg-white/10 mx-auto"><ShieldCheck className="w-7 h-7" /></span>
+          <h2 className="font-heading text-3xl sm:text-4xl font-bold mt-6">Supportive, not diagnostic.</h2>
+          <p className="mt-4 text-stone-300 leading-relaxed">
+            MemoryMate is not a medical device. It helps organize memories, reminders, and caregiver support.
+            It does not diagnose, treat, cure, or replace professional medical advice, emergency services, or clinical care.
+          </p>
+          <Link to="/safety"><Button variant="outline" className="mt-7 rounded-xl border-white/30 bg-transparent text-white hover:bg-white/10">Read our safety commitment</Button></Link>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-20 max-w-4xl mx-auto px-5 text-center">
+        <h2 className="font-heading text-3xl sm:text-4xl font-bold">Start organizing care with MemoryMate.</h2>
+        <p className="mt-3 text-stone-600">Create a free account for yourself or for someone you care for.</p>
+        <Link to="/signup">
+          <Button size="lg" className="mt-7 rounded-2xl h-14 px-8 bg-sky-600 hover:bg-sky-700 shadow-md" data-testid="cta-get-started-btn">
+            Get Started <ArrowRight className="w-5 h-5 ml-1" />
+          </Button>
+        </Link>
+      </section>
+
+      <footer className="border-t border-stone-200 bg-white">
+        <div className="max-w-6xl mx-auto px-5 py-10">
+          <div className="flex flex-col md:flex-row justify-between gap-6">
+            <div className="max-w-sm">
+              <Logo />
+              <p className="mt-3 text-sm text-stone-500">Helping families remember, care, and stay connected.</p>
+            </div>
+            <div className="flex gap-10 text-sm">
+              <div className="flex flex-col gap-2">
+                <span className="font-semibold text-stone-800">Product</span>
+                <a href="#features" className="text-stone-500 hover:text-stone-900">Features</a>
+                <a href="#how" className="text-stone-500 hover:text-stone-900">How it works</a>
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="font-semibold text-stone-800">Company</span>
+                <Link to="/about" className="text-stone-500 hover:text-stone-900">About</Link>
+                <Link to="/privacy" className="text-stone-500 hover:text-stone-900">Privacy</Link>
+                <Link to="/safety" className="text-stone-500 hover:text-stone-900">Safety</Link>
+              </div>
+            </div>
+          </div>
+          <div className="mt-8 pt-6 border-t border-stone-100">
+            <Disclaimer />
+            <p className="mt-3 text-xs text-stone-400">© {new Date().getFullYear()} MemoryMate. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
