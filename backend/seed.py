@@ -31,6 +31,11 @@ async def seed():
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     await _ensure_user(admin_email, "MemoryMate Admin", admin_password, "admin")
 
+    # In production (ENABLE_DEMO=false) we keep only the admin account and skip the
+    # demo patient/caregiver + sample data so the live app starts clean and secure.
+    if os.environ.get("ENABLE_DEMO", "true").lower() != "true":
+        return
+
     patient_uid = await _ensure_user(
         "omar@memorymate.app", "Omar Ahmed", "Patient123!", "patient",
         phone="+1 555 0100", ec_name="Sarah Ahmed", ec_phone="+1 555 0142")

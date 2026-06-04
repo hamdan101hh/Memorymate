@@ -204,6 +204,10 @@ class DemoLoginRequest(BaseModel):
 
 @router.post("/demo-login")
 async def demo_login(body: DemoLoginRequest):
+    # Demo login issues a session for a role WITHOUT a password — convenient for
+    # showcasing, unsafe for real users. Disable it in production with ENABLE_DEMO=false.
+    if os.environ.get("ENABLE_DEMO", "true").lower() != "true":
+        raise HTTPException(status_code=403, detail="Demo login is disabled.")
     email = DEMO_EMAILS.get(body.role)
     if not email:
         raise HTTPException(status_code=400, detail="Unknown demo role.")
