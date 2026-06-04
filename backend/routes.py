@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone, date
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 from db import db
 from auth import get_current_user, require_role, _log
@@ -100,6 +100,7 @@ class MemoryCreate(BaseModel):
     transcript: str
     title: Optional[str] = None
     source: str = "manual"  # manual | voice | upload
+    location: Optional[dict] = None  # optional {lat, lng, label} when location is enabled
 
 
 def _bucket_now() -> str:
@@ -122,6 +123,7 @@ async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_use
         "created_by_user_id": user["id"], "created_by_role": user["role"],
         "title": body.title or extracted.get("title") or "Memory note",
         "transcript": body.transcript, "source": body.source,
+        "location": body.location,
         "simple_summary": extracted.get("simple_summary", ""),
         "timeline": extracted.get("timeline") or _bucket_now(),
         "people_mentioned": extracted.get("people", []),
@@ -344,6 +346,142 @@ async def explain_person(person_id: str, user: dict = Depends(get_current_user))
 async def delete_person(person_id: str, user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
     await db.important_people.delete_one({"id": person_id, "patient_id": pid})
+    return {"ok": True}
+
+
+# ---------------- memory book ----------------
+class MemoryBookCreate(BaseModel):
+    title: str
+    relationship: Optional[str] = ""
+    photo_url: Optional[str] = None
+    story: Optional[str] = ""
+    category: Optional[str] = "person"  # person | place | event | fact
+    facts: Optional[List[str]] = None
+
+
+@router.get("/memory-book")
+async def list_memory_book(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    return await db.memory_book.find({"patient_id": pid}, PROJ).sort("created_at", -1).to_list(500)
+
+
+@router.post("/memory-book")
+async def create_memory_book(body: MemoryBookCreate, user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    if not body.title.strip():
+        raise HTTPException(status_code=400, detail="A title is required.")
+    doc = {"id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+           "title": body.title.strip(), "relationship": body.relationship or "",
+           "photo_url": body.photo_url, "story": body.story or "",
+           "category": body.category or "person", "facts": body.facts or [], "created_at": NOW()}
+    await db.memory_book.insert_one(doc)
+    await _log(user["id"], "create_memory_book", "memory_book", doc["id"])
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@router.delete("/memory-book/{entry_id}")
+async def delete_memory_book(entry_id: str, user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    await db.memory_book.delete_one({"id": entry_id, "patient_id": pid})
+    return {"ok": True}
+
+
+# ---------------- family circle ----------------
+CIRCLE_ROLES = {"primary", "family", "viewer", "medical"}
+PERMISSION_LEVELS = {"full", "edit", "view"}
+
+
+class FamilyInvite(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = ""
+    relationship: Optional[str] = "Family"
+    circle_role: Optional[str] = "family"
+    permissions: Optional[str] = "view"
+
+
+async def _my_link(user: dict, pid: str) -> Optional[dict]:
+    return await db.patient_caregiver_links.find_one({"patient_id": pid, "caregiver_id": user["id"]}, PROJ)
+
+
+async def assert_circle_admin(user: dict, pid: str) -> None:
+    if user["role"] == "admin":
+        return
+    link = await _my_link(user, pid)
+    if not link or link.get("permissions") != "full":
+        raise HTTPException(status_code=403, detail="Only a primary caregiver can manage the family circle.")
+
+
+@router.get("/family")
+async def list_family(user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    links = await db.patient_caregiver_links.find({"patient_id": pid}, PROJ).to_list(200)
+    members = []
+    for l in links:
+        cg = await db.users.find_one({"id": l["caregiver_id"]}, {"_id": 0, "password_hash": 0})
+        members.append({
+            "link_id": l["id"], "user_id": l["caregiver_id"],
+            "full_name": (cg or {}).get("full_name") or l.get("full_name", ""),
+            "email": (cg or {}).get("email", ""),
+            "phone": (cg or {}).get("phone"),
+            "relationship": l.get("relationship", ""),
+            "circle_role": l.get("circle_role", "family"),
+            "permissions": l.get("permissions", "view"),
+            "is_self": l["caregiver_id"] == user["id"],
+        })
+    invites = await db.family_invites.find({"patient_id": pid, "status": "pending"}, PROJ).to_list(200)
+    mine = await _my_link(user, pid)
+    my_perms = "full" if user["role"] == "admin" else (mine or {}).get("permissions", "view")
+    return {"members": members, "invites": invites, "my_permissions": my_perms}
+
+
+@router.post("/family/invite")
+async def invite_family(body: FamilyInvite, user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    await assert_circle_admin(user, pid)
+    email = body.email.lower().strip()
+    circle_role = body.circle_role if body.circle_role in CIRCLE_ROLES else "family"
+    permissions = body.permissions if body.permissions in PERMISSION_LEVELS else "view"
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        if await db.patient_caregiver_links.find_one({"patient_id": pid, "caregiver_id": existing["id"]}):
+            raise HTTPException(status_code=400, detail="This person is already in the family circle.")
+        link = {"id": str(uuid.uuid4()), "patient_id": pid, "caregiver_id": existing["id"],
+                "relationship": body.relationship or "Family", "circle_role": circle_role,
+                "permissions": permissions, "created_at": NOW()}
+        await db.patient_caregiver_links.insert_one(link)
+        await _log(user["id"], "family_link", "patient_caregiver_link", link["id"], email)
+        return {"linked": True, "member": {"full_name": existing["full_name"], "email": email}}
+    inv = {"id": str(uuid.uuid4()), "patient_id": pid, "email": email,
+           "full_name": body.full_name or "", "relationship": body.relationship or "Family",
+           "circle_role": circle_role, "permissions": permissions,
+           "status": "pending", "invited_by": user["id"], "created_at": NOW()}
+    await db.family_invites.update_one(
+        {"patient_id": pid, "email": email},
+        {"$set": inv}, upsert=True)
+    await _log(user["id"], "family_invite", "family_invite", inv["id"], email)
+    return {"linked": False, "invite": {k: v for k, v in inv.items() if k != "_id"}}
+
+
+@router.delete("/family/invite/{invite_id}")
+async def cancel_family_invite(invite_id: str, user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    await assert_circle_admin(user, pid)
+    await db.family_invites.delete_one({"id": invite_id, "patient_id": pid})
+    return {"ok": True}
+
+
+@router.delete("/family/{link_id}")
+async def remove_family_member(link_id: str, user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    await assert_circle_admin(user, pid)
+    link = await db.patient_caregiver_links.find_one({"id": link_id, "patient_id": pid}, PROJ)
+    if not link:
+        raise HTTPException(status_code=404, detail="Family member not found.")
+    full_count = await db.patient_caregiver_links.count_documents({"patient_id": pid, "permissions": "full"})
+    if link.get("permissions") == "full" and full_count <= 1:
+        raise HTTPException(status_code=400, detail="You cannot remove the last primary caregiver.")
+    await db.patient_caregiver_links.delete_one({"id": link_id, "patient_id": pid})
+    await _log(user["id"], "family_unlink", "patient_caregiver_link", link_id)
     return {"ok": True}
 
 

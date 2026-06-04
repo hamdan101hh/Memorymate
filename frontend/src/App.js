@@ -12,6 +12,10 @@ const Safety = lazy(() => import("./pages/public/Safety"));
 const Login = lazy(() => import("./pages/auth/Login"));
 const Signup = lazy(() => import("./pages/auth/Signup"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const ShareExport = lazy(() => import("./pages/ShareExport"));
+const PatientMemoryBook = lazy(() => import("./pages/patient/PatientMemoryBook"));
+const CgMemoryBook = lazy(() => import("./pages/caregiver/CgMemoryBook"));
+const CgFamily = lazy(() => import("./pages/caregiver/CgFamily"));
 
 const PatientLayout = lazy(() => import("./pages/patient/PatientLayout"));
 const PatientHome = lazy(() => import("./pages/patient/PatientHome"));
@@ -100,6 +104,8 @@ function AppRoutes() {
         <Route path="capture/review" element={<PrivacyReview />} />
         <Route path="capture/vault" element={<PrivacyVault />} />
         <Route path="capture/settings" element={<CaptureSettings />} />
+        <Route path="share" element={<ShareExport />} />
+        <Route path="memory-book" element={<PatientMemoryBook />} />
       </Route>
 
       <Route path="/caregiver" element={<Protected roles={["caregiver", "admin"]}><CaregiverLayout /></Protected>}>
@@ -121,6 +127,9 @@ function AppRoutes() {
         <Route path="capture/review" element={<PrivacyReview />} />
         <Route path="capture/vault" element={<PrivacyVault />} />
         <Route path="capture/settings" element={<CaptureSettings />} />
+        <Route path="share" element={<ShareExport />} />
+        <Route path="memory-book" element={<CgMemoryBook />} />
+        <Route path="family" element={<CgFamily />} />
       </Route>
 
       <Route path="/admin" element={<Protected roles={["admin"]}><AdminLayout /></Protected>}>

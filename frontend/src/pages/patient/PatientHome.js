@@ -4,7 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
 import { logError } from "../../lib/logger";
 import { Switch } from "../../components/ui/switch";
-import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone, Radio, Video, EyeOff } from "lucide-react";
+import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone, Radio, Video, EyeOff, BookHeart } from "lucide-react";
 import { toast } from "sonner";
 
 function useClock() {
@@ -22,6 +22,7 @@ const TILES = [
   { to: "today", icon: Sun, title: "Today's Summary", color: "bg-amber-500", testid: "tile-today" },
   { to: "reminders", icon: Bell, title: "My Reminders", color: "bg-violet-600", testid: "tile-reminders" },
   { to: "people", icon: Users, title: "Important People", color: "bg-rose-500", testid: "tile-people" },
+  { to: "memory-book", icon: BookHeart, title: "My Memory Book", color: "bg-fuchsia-600", testid: "tile-memory-book" },
 ];
 
 export default function PatientHome() {
@@ -116,8 +117,10 @@ function CaptureSection() {
         <Switch checked={!!settings?.private_mode} onCheckedChange={togglePrivate} data-testid="home-private-mode-toggle" />
       </div>
 
-      <div className="mt-3 flex gap-4 text-sm">
+      <div className="mt-3 flex flex-wrap gap-4 text-sm">
         <Link to="capture/review" className="text-sky-700 font-medium" data-testid="link-privacy-review">Privacy review</Link>
+        <Link to="capture/vault" className="text-sky-700 font-medium" data-testid="link-private-vault">Private Vault</Link>
+        <Link to="share" className="text-sky-700 font-medium" data-testid="link-share">Share &amp; export</Link>
         <Link to="capture/settings" className="text-sky-700 font-medium" data-testid="link-capture-settings">Capture settings</Link>
       </div>
     </div>

@@ -40,6 +40,7 @@ DEFAULT_SETTINGS = {
     "low_battery_auto_stop": True,
     "wifi_only": False,
     "local_processing": False,
+    "location_enabled": False,  # optional: attach coarse location to memories/events
     "default_transcript_storage_mode": "summary_only",  # summary_only | transcript | raw_audio
 }
 
@@ -65,6 +66,7 @@ class SettingsUpdate(BaseModel):
     low_battery_auto_stop: Optional[bool] = None
     wifi_only: Optional[bool] = None
     local_processing: Optional[bool] = None
+    location_enabled: Optional[bool] = None
     default_transcript_storage_mode: Optional[str] = None
 
 

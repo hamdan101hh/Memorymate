@@ -42,6 +42,12 @@ export default function TodaySummary() {
                   <div key={m.id} className="text-lg text-stone-700 leading-relaxed border-l-4 border-stone-100 pl-4">
                     <p className="font-semibold text-stone-900">{m.title}</p>
                     <p>{m.simple_summary}</p>
+                    {m.location?.lat != null && (
+                      <a href={`https://www.google.com/maps?q=${m.location.lat},${m.location.lng}`} target="_blank" rel="noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-sm text-sky-700" data-testid="memory-location-link">
+                        <MapPin className="w-4 h-4" /> View location
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

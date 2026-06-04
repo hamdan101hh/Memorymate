@@ -1,10 +1,13 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { formatApiError } from "../../lib/api";
+import { logError } from "../../lib/logger";
+import { getCurrentLocation } from "../../lib/geolocation";
 import { PatientPageHeader } from "./PatientLayout";
 import { Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
-import { Mic, Square, Loader2, Save, Sparkles, CheckCircle2, Bell, Users, Pill } from "lucide-react";
+import { Checkbox } from "../../components/ui/checkbox";
+import { Mic, Square, Loader2, Sparkles, CheckCircle2, Bell, Users, Pill, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 export default function RecordMemory() {
@@ -15,8 +18,16 @@ export default function RecordMemory() {
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
   const [source, setSource] = useState("manual");
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  const [attachLocation, setAttachLocation] = useState(false);
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
+
+  useEffect(() => {
+    api.get("/capture/settings")
+      .then(({ data }) => setLocationEnabled(!!data.location_enabled))
+      .catch((e) => logError("Failed to load settings", e));
+  }, []);
 
   const startRecording = async () => {
     try {
@@ -62,7 +73,12 @@ export default function RecordMemory() {
     if (!transcript.trim()) { toast.error("Please record or type a memory first."); return; }
     setSaving(true);
     try {
-      const { data } = await api.post("/memories", { transcript, source });
+      let location = null;
+      if (locationEnabled && attachLocation) {
+        location = await getCurrentLocation();
+        if (!location) toast.message("Couldn't get your location — saving without it.");
+      }
+      const { data } = await api.post("/memories", { transcript, source, location });
       setResult(data);
       toast.success("Memory saved.");
     } catch (err) {
@@ -128,6 +144,13 @@ export default function RecordMemory() {
           data-testid="transcript-input"
         />
       </div>
+
+      {locationEnabled && (
+        <label className="mt-5 flex items-center gap-3 cursor-pointer rounded-2xl bg-white border-2 border-stone-200 p-4 text-lg" data-testid="record-location-toggle">
+          <Checkbox checked={attachLocation} onCheckedChange={(v) => setAttachLocation(!!v)} />
+          <MapPin className="w-5 h-5 text-sky-600" /> Attach my current location
+        </label>
+      )}
 
       <Button onClick={save} disabled={saving || transcribing} className="mt-6 w-full h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-lg" data-testid="save-memory-btn">
         {saving ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Creating summary…</> : <><Sparkles className="w-5 h-5 mr-2" /> Save Memory</>}

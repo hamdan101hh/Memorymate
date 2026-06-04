@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Disclaimer } from "../../components/common";
 import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Clock } from "lucide-react";
+import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Infinity as InfinityIcon, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CaptureSettings() {
@@ -75,9 +75,16 @@ export default function CaptureSettings() {
         </Row>
       </Card>
 
-      <div className="rounded-2xl border-2 border-dashed border-stone-300 bg-stone-50 p-5 mb-5" data-testid="always-on-placeholder">
-        <div className="flex items-center gap-2 font-semibold text-stone-700"><Clock className="w-5 h-5" /> Always-On Memory Layer — Coming Later</div>
-        <p className="text-sm text-stone-500 mt-1">Designed for approved devices and consent-based environments. Requires privacy, battery, and platform compliance.</p>
+      <Card title="Location">
+        <Row icon={MapPin} label="Allow attaching location to memories">
+          <Switch checked={!!s.location_enabled} onCheckedChange={(v) => update({ location_enabled: v })} data-testid="setting-location" />
+        </Row>
+        <p className="text-xs text-stone-400 pt-2">When on, you can choose to attach your location to a memory. It is never attached automatically.</p>
+      </Card>
+
+      <div className="rounded-2xl border-2 border-sky-200 bg-sky-50 p-5 mb-5" data-testid="always-on-note">
+        <div className="flex items-center gap-2 font-semibold text-sky-800"><InfinityIcon className="w-5 h-5" /> Always-On (Continuous) Capture is available</div>
+        <p className="text-sm text-stone-600 mt-1">Inside a capture session, turn on “Continuous (always-on)” to auto-save events while you speak, using free on-device dictation. A visible indicator stays on the whole time, and you can pause or stop anytime.</p>
       </div>
 
       <div className="rounded-xl bg-white border border-stone-200 p-5">

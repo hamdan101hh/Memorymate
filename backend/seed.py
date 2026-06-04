@@ -52,7 +52,7 @@ async def seed():
     })
     await db.patient_caregiver_links.insert_one({
         "id": str(uuid.uuid4()), "patient_id": pid, "caregiver_id": caregiver_uid,
-        "relationship": "Daughter", "permissions": "full", "created_at": NOW(),
+        "relationship": "Daughter", "circle_role": "primary", "permissions": "full", "created_at": NOW(),
     })
 
     today = date.today().isoformat()

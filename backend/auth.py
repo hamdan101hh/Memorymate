@@ -139,19 +139,32 @@ async def register(body: RegisterRequest):
             "created_at": now,
         })
     else:  # caregiver
-        pinfo = body.patient_info or PatientLinkInfo(full_name="My Loved One")
-        patient_id = str(uuid.uuid4())
-        await db.patients.insert_one({
-            "id": patient_id, "user_id": None, "full_name": pinfo.full_name,
-            "age": pinfo.age, "emergency_contact_name": pinfo.emergency_contact_name,
-            "emergency_contact_phone": pinfo.emergency_contact_phone,
-            "notes": pinfo.notes or "", "created_at": now,
-        })
-        await db.patient_caregiver_links.insert_one({
-            "id": str(uuid.uuid4()), "patient_id": patient_id, "caregiver_id": user_id,
-            "relationship": pinfo.relationship or "Family", "permissions": "full",
-            "created_at": now,
-        })
+        # If this caregiver was invited into an existing patient's family circle,
+        # link them to that patient instead of creating a brand-new one.
+        invite = await db.family_invites.find_one({"email": email, "status": "pending"})
+        if invite:
+            await db.patient_caregiver_links.insert_one({
+                "id": str(uuid.uuid4()), "patient_id": invite["patient_id"], "caregiver_id": user_id,
+                "relationship": invite.get("relationship", "Family"),
+                "circle_role": invite.get("circle_role", "family"),
+                "permissions": invite.get("permissions", "view"), "created_at": now,
+            })
+            await db.family_invites.update_one(
+                {"id": invite["id"]}, {"$set": {"status": "accepted", "accepted_at": now}})
+        else:
+            pinfo = body.patient_info or PatientLinkInfo(full_name="My Loved One")
+            patient_id = str(uuid.uuid4())
+            await db.patients.insert_one({
+                "id": patient_id, "user_id": None, "full_name": pinfo.full_name,
+                "age": pinfo.age, "emergency_contact_name": pinfo.emergency_contact_name,
+                "emergency_contact_phone": pinfo.emergency_contact_phone,
+                "notes": pinfo.notes or "", "created_at": now,
+            })
+            await db.patient_caregiver_links.insert_one({
+                "id": str(uuid.uuid4()), "patient_id": patient_id, "caregiver_id": user_id,
+                "relationship": pinfo.relationship or "Family", "circle_role": "primary",
+                "permissions": "full", "created_at": now,
+            })
 
     await _log(user_id, "register", "user", user_id, f"role={body.role}")
     token = create_access_token(user_id, email, body.role)

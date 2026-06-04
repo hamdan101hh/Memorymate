@@ -176,3 +176,69 @@ class TestReviewEdit:
             ok = requests.post(f"{API}/capture/review/{rid}/action", headers=_h(token),
                                json={"action": "edit", "edited_content": "Edited safe note."}, timeout=15)
             assert ok.status_code == 200 and ok.json()["action"] == "edit"
+
+
+# ---------------- location (optional) ----------------
+class TestLocation:
+    def test_location_setting_and_memory_persist(self):
+        token = _demo("patient")["token"]
+        h = _h(token)
+        st = requests.patch(f"{API}/capture/settings", headers=h, json={"location_enabled": True}, timeout=15)
+        assert st.status_code == 200 and st.json()["location_enabled"] is True
+        loc = {"lat": 25.2, "lng": 55.27, "label": "25.2, 55.27"}
+        r = requests.post(f"{API}/memories", headers=h,
+                          json={"transcript": "Walked in the park.", "source": "manual", "location": loc}, timeout=90)
+        assert r.status_code == 200, r.text
+        assert r.json().get("location", {}).get("lat") == 25.2
+
+
+# ---------------- memory book ----------------
+class TestMemoryBook:
+    def test_caregiver_crud_and_patient_read_only(self):
+        cg = _h(_demo("caregiver")["token"])
+        pt = _h(_demo("patient")["token"])
+        created = requests.post(f"{API}/memory-book", headers=cg,
+                                json={"title": f"Sarah {uuid.uuid4().hex[:5]}", "relationship": "Daughter",
+                                      "story": "Visits every Sunday.", "category": "person"}, timeout=15)
+        assert created.status_code == 200, created.text
+        eid = created.json()["id"]
+        # patient can read but not write
+        assert requests.get(f"{API}/memory-book", headers=pt, timeout=15).status_code == 200
+        assert requests.post(f"{API}/memory-book", headers=pt, json={"title": "blocked"}, timeout=15).status_code == 403
+        # caregiver can delete
+        assert requests.delete(f"{API}/memory-book/{eid}", headers=cg, timeout=15).status_code == 200
+
+
+# ---------------- family circle ----------------
+class TestFamilyCircle:
+    def test_list_shape_and_admin_only_management(self):
+        cg = _h(_demo("caregiver")["token"])
+        pt = _h(_demo("patient")["token"])
+        r = requests.get(f"{API}/family", headers=cg, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        for k in ("members", "invites", "my_permissions"):
+            assert k in d
+        assert len(d["members"]) >= 1
+        # patient role has no access to the family circle endpoint
+        assert requests.get(f"{API}/family", headers=pt, timeout=15).status_code == 403
+
+    def test_invite_pending_and_cancel(self):
+        cg = _h(_demo("caregiver")["token"])
+        email = f"invitee_{uuid.uuid4().hex[:8]}@example.com"
+        r = requests.post(f"{API}/family/invite", headers=cg,
+                          json={"email": email, "relationship": "Son", "circle_role": "family", "permissions": "view"}, timeout=15)
+        assert r.status_code == 200, r.text
+        assert r.json()["linked"] is False
+        invites = requests.get(f"{API}/family", headers=cg, timeout=15).json()["invites"]
+        inv = next((i for i in invites if i["email"] == email), None)
+        assert inv is not None
+        assert requests.delete(f"{API}/family/invite/{inv['id']}", headers=cg, timeout=15).status_code == 200
+
+    def test_cannot_remove_last_primary(self):
+        cg = _h(_demo("caregiver")["token"])
+        members = requests.get(f"{API}/family", headers=cg, timeout=15).json()["members"]
+        fulls = [m for m in members if m["permissions"] == "full"]
+        if len(fulls) == 1:
+            r = requests.delete(f"{API}/family/{fulls[0]['link_id']}", headers=cg, timeout=15)
+            assert r.status_code == 400
