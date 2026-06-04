@@ -21,3 +21,13 @@ root.render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+// Register the PWA service worker in production builds so the app is installable
+// and loads offline. Skipped in development to avoid stale caches while iterating.
+if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register(`${process.env.PUBLIC_URL}/service-worker.js`)
+      .catch(() => { /* offline support is best-effort */ });
+  });
+}

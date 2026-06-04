@@ -41,6 +41,14 @@ LLM_KEY, MODEL_PROVIDER, MODEL_NAME = _resolve_provider()
 STT_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY") or LLM_KEY
 AI_ENABLED = LLM_KEY not in ("no-key-configured", "local-dev-placeholder-key")
 
+# Cost-control tier: high-VOLUME work (capture filtering, meeting summaries, memory
+# extraction) runs on a cheaper model so always-on capture stays affordable
+# (see the AI cost model). Interactive/low-volume work (the assistant, caregiver
+# summary) keeps the primary model for quality. Defaults to the primary model so
+# nothing changes until a cheap model is configured via env.
+CAPTURE_MODEL_PROVIDER = os.environ.get("CAPTURE_MODEL_PROVIDER", MODEL_PROVIDER)
+CAPTURE_MODEL_NAME = os.environ.get("CAPTURE_MODEL_NAME", MODEL_NAME)
+
 SAFETY_RULES = (
     "You are MemoryMate, a calm, gentle memory-support assistant for elderly people and "
     "people with early memory loss. SAFETY RULES you must always follow:\n"
@@ -53,12 +61,16 @@ SAFETY_RULES = (
 )
 
 
-def _chat(system_message: str, session_id: str | None = None) -> LlmChat:
+def _chat(system_message: str, session_id: str | None = None, cheap: bool = False) -> LlmChat:
+    """Build a chat client. Set cheap=True for high-volume capture/summary work
+    so it routes to the low-cost capture model when one is configured."""
+    provider = CAPTURE_MODEL_PROVIDER if cheap else MODEL_PROVIDER
+    model = CAPTURE_MODEL_NAME if cheap else MODEL_NAME
     return LlmChat(
         api_key=LLM_KEY,
         session_id=session_id or str(uuid.uuid4()),
         system_message=system_message,
-    ).with_model(MODEL_PROVIDER, MODEL_NAME)
+    ).with_model(provider, model)
 
 
 def _extract_json(text: str) -> dict:
@@ -113,7 +125,7 @@ async def process_transcript(transcript: str) -> dict:
         "Use empty arrays when nothing applies. Do not invent anything not in the transcript."
     )
     try:
-        chat = _chat(system)
+        chat = _chat(system, cheap=True)
         resp = await chat.send_message(UserMessage(text=f"Transcript:\n{transcript}"))
         data = _extract_json(resp)
         for key in fallback:
@@ -206,20 +218,26 @@ CAPTURE_RULES = (
     "Rules:\n"
     "- If a transcript contains multiple topics, SPLIT it into separate events.\n"
     "- Ignore small talk, filler, and irrelevant chatter (do not save).\n"
-    "- If content is private/sensitive or you are unsure whether it should be saved, send it to caregiver privacy review instead of saving.\n"
+    "- PRIVACY: if a useful memory contains sensitive/private details (passwords, PINs, bank/"
+    "financial info, health specifics, home address, legal matters, anything embarrassing), still "
+    "save it as an event but set privacy_level to 'sensitive'. Sensitive events are locked in a "
+    "PIN-protected Private Vault and hidden from the timeline and shared summaries.\n"
+    "- Only when you are genuinely UNSURE whether something should be saved at all, send it to "
+    "caregiver privacy review instead of saving.\n"
     "- Never invent details. Use only what is in the transcript.\n"
 )
 
 
 async def filter_capture_transcript(transcript: str, meta: dict | None = None) -> dict:
     """Classify + divide a capture transcript into discrete memory events and review items."""
-    fallback = {"events": [], "review_items": []}
+    fallback = {"context": "general", "events": [], "review_items": []}
     meta = meta or {}
     ctx = f"Session title: {meta.get('title','')}. Purpose: {meta.get('purpose','')}. People involved: {meta.get('people_involved','')}."
     system = (
         SAFETY_RULES + CAPTURE_RULES
         + "\nRespond ONLY with valid JSON in exactly this shape:\n"
         "{\n"
+        '  "context": "meeting | family_visit | doctor | phone_call | routine | general — your best guess at what kind of situation this is",\n'
         '  "events": [\n'
         "    {\n"
         '      "title": "short title",\n'
@@ -250,9 +268,10 @@ async def filter_capture_transcript(transcript: str, meta: dict | None = None) -
         f"Session context: {ctx}"
     )
     try:
-        chat = _chat(system)
+        chat = _chat(system, cheap=True)
         resp = await chat.send_message(UserMessage(text=f"Transcript:\n{transcript}"))
         data = _extract_json(resp)
+        data.setdefault("context", "general")
         data.setdefault("events", [])
         data.setdefault("review_items", [])
         for ev in data["events"]:
@@ -286,7 +305,7 @@ async def summarize_meeting(transcript: str, meta: dict | None = None) -> dict:
         f"Meeting title: {meta.get('title','')}. Purpose: {meta.get('purpose','')}. People: {meta.get('people_involved','')}."
     )
     try:
-        chat = _chat(system)
+        chat = _chat(system, cheap=True)
         resp = await chat.send_message(UserMessage(text=f"Meeting transcript:\n{transcript}"))
         data = _extract_json(resp)
         for k in fallback:

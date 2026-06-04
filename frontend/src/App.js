@@ -47,6 +47,7 @@ const CaptureStart = lazy(() => import("./pages/capture/CaptureStart"));
 const CaptureSession = lazy(() => import("./pages/capture/CaptureSession"));
 const CaptureSessions = lazy(() => import("./pages/capture/CaptureSessions"));
 const PrivacyReview = lazy(() => import("./pages/capture/PrivacyReview"));
+const PrivacyVault = lazy(() => import("./pages/capture/PrivacyVault"));
 const CaptureSettings = lazy(() => import("./pages/capture/CaptureSettings"));
 
 function homePath(role) {
@@ -97,6 +98,7 @@ function AppRoutes() {
         <Route path="meeting" element={<CaptureStart mode="meeting" />} />
         <Route path="capture/session/:id" element={<CaptureSession />} />
         <Route path="capture/review" element={<PrivacyReview />} />
+        <Route path="capture/vault" element={<PrivacyVault />} />
         <Route path="capture/settings" element={<CaptureSettings />} />
       </Route>
 
@@ -117,6 +119,7 @@ function AppRoutes() {
         <Route path="capture/sessions" element={<CaptureSessions />} />
         <Route path="capture/session/:id" element={<CaptureSession />} />
         <Route path="capture/review" element={<PrivacyReview />} />
+        <Route path="capture/vault" element={<PrivacyVault />} />
         <Route path="capture/settings" element={<CaptureSettings />} />
       </Route>
 

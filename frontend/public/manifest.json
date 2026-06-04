@@ -1,0 +1,19 @@
+{
+  "short_name": "MemoryMate",
+  "name": "MemoryMate — Memory support",
+  "description": "A calm, AI-assisted memory-support app for people with memory loss and their caregivers.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0369a1",
+  "background_color": "#f5f5f4"
+}

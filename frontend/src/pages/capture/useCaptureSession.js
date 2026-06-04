@@ -53,6 +53,18 @@ export function useCaptureSession() {
     }
   }, [id]);
 
+  const append = useCallback(async (transcript) => {
+    if (!transcript.trim()) return null;
+    try {
+      const { data } = await api.post(`/capture/sessions/${id}/append`, { transcript });
+      return data;
+    } catch (err) {
+      logError("Failed to append capture chunk", err);
+      if (err.response?.status === 429) toast.error("Daily AI limit reached — try again tomorrow.");
+      return null;
+    }
+  }, [id]);
+
   const process = useCallback(async (transcript) => {
     if (!transcript.trim()) { toast.error("Paste a transcript to process."); return; }
     setProcessing(true);
@@ -69,5 +81,5 @@ export function useCaptureSession() {
     }
   }, [id]);
 
-  return { session, status, processing, result, changeStatus, addNote, process };
+  return { session, status, processing, result, changeStatus, addNote, process, append };
 }

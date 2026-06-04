@@ -1,19 +1,35 @@
 """Memory Capture & Meeting Mode — consent-based, user-controlled capture sessions.
 Extends the existing app; reuses patient scoping, reminders and appointments collections."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from db import db
-from auth import get_current_user, _log
+from auth import get_current_user, _log, hash_password, verify_password
 from routes import patient_id_for
 import ai
+import usage
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
 NOW = lambda: datetime.now(timezone.utc).isoformat()
 PROJ = {"_id": 0}
+
+
+def _redact(ev: dict) -> dict:
+    """Hide sensitive event content outside the Private Vault. Returns a locked
+    stub (no summary/people/places) so the UI can show 'Private (locked)'."""
+    if ev.get("privacy_level") == "sensitive":
+        return {
+            "id": ev.get("id"), "title": "Private (locked)",
+            "event_type": ev.get("event_type", "memory_event"),
+            "privacy_level": "sensitive", "locked": True,
+            "summary": "", "event_time": ev.get("event_time", ""),
+            "people": [], "places": [], "reminders": [], "action_items": [],
+            "confidence": ev.get("confidence", "medium"), "created_at": ev.get("created_at", ""),
+        }
+    return ev
 
 
 # ---------------- audio / privacy settings ----------------
@@ -127,7 +143,7 @@ async def get_session(sid: str, user: dict = Depends(get_current_user)):
     if not s:
         raise HTTPException(status_code=404, detail="Session not found.")
     events = await db.memory_events.find({"session_id": sid}, PROJ).sort("created_at", 1).to_list(500)
-    return {**s, "events": events}
+    return {**s, "events": [_redact(e) for e in events]}
 
 
 class SessionStatus(BaseModel):
@@ -223,15 +239,18 @@ async def _persist_event(pid: str, sid: str, user_id: str, ev: dict, now: str, s
         "status": "saved", "created_at": now,
     }
     await db.memory_events.insert_one(doc)
-    for r in ev.get("reminders", []):
-        await db.reminders.insert_one({
-            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
-            "title": r, "description": f"From capture: {session_title}",
-            "category": "appointment" if etype == "appointment" else "task",
-            "priority": "medium", "due_date": "", "due_time": "", "repeat_rule": "none",
-            "status": "pending", "source": "ai", "created_at": now, "completed_at": None,
-        })
-    await _route_event_to_tables(pid, user_id, etype, ev, now)
+    # Sensitive events are locked in the Private Vault — never spill their content
+    # into reminders, people, or places tables.
+    if doc["privacy_level"] != "sensitive":
+        for r in ev.get("reminders", []):
+            await db.reminders.insert_one({
+                "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
+                "title": r, "description": f"From capture: {session_title}",
+                "category": "appointment" if etype == "appointment" else "task",
+                "priority": "medium", "due_date": "", "due_time": "", "repeat_rule": "none",
+                "status": "pending", "source": "ai", "created_at": now, "completed_at": None,
+            })
+        await _route_event_to_tables(pid, user_id, etype, ev, now)
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
@@ -269,6 +288,9 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add a transcript to process.")
 
+    # Cost guard: refuse if this patient has hit today's AI ceiling.
+    await usage.assert_within_cap(pid)
+
     meta = {"title": s["title"], "purpose": s.get("purpose", ""), "people_involved": s.get("people_involved", "")}
     now = NOW()
 
@@ -281,12 +303,57 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
     # Meeting mode -> structured meeting summary stored on the session.
     meeting_summary = await ai.summarize_meeting(body.transcript, meta) if s.get("mode") == "meeting" else None
 
+    # Record estimated AI cost (capture splitting + optional meeting summary).
+    out_chars = sum(len(str(e.get("summary", ""))) for e in created_events) + len(str(meeting_summary or ""))
+    await usage.record(pid, "capture_process", in_chars=len(body.transcript), out_chars=out_chars, tier="cheap")
+
     await _finalize_session(s, sid, body.transcript, now, meeting_summary)
+    locked_count = sum(1 for e in created_events if e.get("privacy_level") == "sensitive")
     return {
-        "events": created_events,
+        "events": [_redact(e) for e in created_events],
         "review_items": created_reviews,
         "meeting_summary": meeting_summary,
+        "context": result.get("context", "general"),
         "filtered_out": True,
+        "locked_count": locked_count,
+    }
+
+
+@router.post("/sessions/{sid}/append")
+async def append_chunk(sid: str, body: ProcessBody, user: dict = Depends(get_current_user)):
+    """Continuous (always-on) capture: filter ONE chunk of live dictation into events
+    without ending the session. Lets capture run hands-free while it stays open."""
+    pid = await patient_id_for(user)
+    s = await db.capture_sessions.find_one({"id": sid, "patient_id": pid}, PROJ)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    settings = await get_settings_doc(pid)
+    if settings.get("private_mode"):
+        raise HTTPException(status_code=423, detail="Private Mode is ON. Nothing was processed or saved.")
+    if not body.transcript.strip():
+        return {"events": [], "review_items": [], "context": "general", "locked_count": 0}
+
+    await usage.assert_within_cap(pid)
+    meta = {"title": s["title"], "purpose": s.get("purpose", ""), "people_involved": s.get("people_involved", "")}
+    now = NOW()
+    result = await ai.filter_capture_transcript(body.transcript, meta)
+    created_events = [await _persist_event(pid, sid, user["id"], ev, now, s["title"])
+                      for ev in result.get("events", [])]
+    created_reviews = await _persist_reviews(pid, sid, result.get("review_items", []), now)
+    out_chars = sum(len(str(e.get("summary", ""))) for e in created_events)
+    await usage.record(pid, "capture_append", in_chars=len(body.transcript), out_chars=out_chars, tier="cheap")
+
+    # Auto-detected context (meeting/family/doctor/…) — surfaced live in the UI.
+    detected = result.get("context", "general")
+    if detected and detected != s.get("session_type"):
+        await db.capture_sessions.update_one({"id": sid}, {"$set": {"detected_context": detected}})
+
+    locked_count = sum(1 for e in created_events if e.get("privacy_level") == "sensitive")
+    return {
+        "events": [_redact(e) for e in created_events],
+        "review_items": created_reviews,
+        "context": detected,
+        "locked_count": locked_count,
     }
 
 
@@ -294,7 +361,87 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
 @router.get("/events")
 async def list_events(user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
-    return await db.memory_events.find({"patient_id": pid}, PROJ).sort("created_at", -1).to_list(1000)
+    # Sensitive events live in the Private Vault and are excluded from normal lists.
+    return await db.memory_events.find(
+        {"patient_id": pid, "privacy_level": {"$ne": "sensitive"}}, PROJ
+    ).sort("created_at", -1).to_list(1000)
+
+
+# ---------------- private vault (PIN-locked sensitive content) ----------------
+MAX_PIN_FAILS = 5
+LOCKOUT_MINUTES = 5
+
+
+async def _vault_doc(pid: str) -> Optional[dict]:
+    return await db.vault_settings.find_one({"patient_id": pid}, PROJ)
+
+
+class VaultPin(BaseModel):
+    pin: str
+    current_pin: Optional[str] = None
+
+
+class VaultUnlock(BaseModel):
+    pin: str
+
+
+@router.get("/vault/status")
+async def vault_status(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    doc = await _vault_doc(pid)
+    count = await db.memory_events.count_documents({"patient_id": pid, "privacy_level": "sensitive"})
+    return {"pin_set": bool(doc), "locked_count": count}
+
+
+@router.post("/vault/pin")
+async def set_vault_pin(body: VaultPin, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    pin = (body.pin or "").strip()
+    if len(pin) < 4:
+        raise HTTPException(status_code=400, detail="PIN must be at least 4 characters.")
+    doc = await _vault_doc(pid)
+    now = NOW()
+    if doc:
+        if not body.current_pin or not verify_password(body.current_pin, doc["pin_hash"]):
+            raise HTTPException(status_code=403, detail="Current PIN is incorrect.")
+        await db.vault_settings.update_one(
+            {"patient_id": pid},
+            {"$set": {"pin_hash": hash_password(pin), "updated_at": now, "failed_attempts": 0, "locked_until": None}},
+        )
+    else:
+        await db.vault_settings.insert_one({
+            "id": str(uuid.uuid4()), "patient_id": pid, "pin_hash": hash_password(pin),
+            "failed_attempts": 0, "locked_until": None, "created_at": now, "updated_at": now,
+        })
+    await _log(user["id"], "vault_pin_set", "vault", pid, "")
+    return {"ok": True, "pin_set": True}
+
+
+@router.post("/vault/unlock")
+async def unlock_vault(body: VaultUnlock, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    doc = await _vault_doc(pid)
+    if not doc:
+        raise HTTPException(status_code=400, detail="No vault PIN is set yet. Set one first.")
+    now = NOW()
+    locked_until = doc.get("locked_until")
+    if locked_until and now < locked_until:
+        raise HTTPException(status_code=429, detail="Too many attempts. Try again in a few minutes.")
+    if not verify_password(body.pin, doc["pin_hash"]):
+        fails = int(doc.get("failed_attempts", 0)) + 1
+        update = {"failed_attempts": fails}
+        if fails >= MAX_PIN_FAILS:
+            update["locked_until"] = (datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
+            update["failed_attempts"] = 0
+        await db.vault_settings.update_one({"patient_id": pid}, {"$set": update})
+        await _log(user["id"], "vault_unlock_failed", "vault", pid, str(fails))
+        raise HTTPException(status_code=403, detail="Incorrect PIN.")
+    await db.vault_settings.update_one({"patient_id": pid}, {"$set": {"failed_attempts": 0, "locked_until": None}})
+    items = await db.memory_events.find(
+        {"patient_id": pid, "privacy_level": "sensitive"}, PROJ
+    ).sort("created_at", -1).to_list(500)
+    await _log(user["id"], "vault_unlock", "vault", pid, f"{len(items)} items")
+    return {"items": items}
 
 
 # ---------------- privacy review queue ----------------

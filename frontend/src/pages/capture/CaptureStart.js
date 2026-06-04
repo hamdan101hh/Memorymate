@@ -9,7 +9,7 @@ import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Radio, Video, ShieldAlert, Loader2, ArrowLeft } from "lucide-react";
+import { Radio, Video, ShieldAlert, Loader2, ArrowLeft, LockKeyhole } from "lucide-react";
 import { toast } from "sonner";
 
 const TYPES = [
@@ -56,7 +56,10 @@ export default function CaptureStart({ mode = "capture" }) {
         </span>
         <h1 className="font-heading text-2xl sm:text-3xl font-bold">{isMeeting ? "Meeting Mode" : "Start Memory Capture"}</h1>
       </div>
-      <p className="text-stone-600 mb-6">{isMeeting ? "Set up a meeting to capture key points, decisions and action items — with consent." : "Start a focused capture session. By default, only a summary and action items are saved."}</p>
+      <p className="text-stone-600 mb-4">{isMeeting ? "Set up a meeting to capture key points, decisions and action items — with consent." : "Start a focused capture session. By default, only a summary and action items are saved."}</p>
+      <button onClick={() => navigate(`${base}/capture/vault`)} className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-stone-700 hover:text-stone-900" data-testid="open-vault-link">
+        <LockKeyhole className="w-4 h-4" /> Private Vault
+      </button>
 
       <div className="bg-white border border-stone-200 rounded-2xl p-6 space-y-4">
         <div>

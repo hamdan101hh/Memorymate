@@ -99,6 +99,61 @@ class TestCaptureRouting:
         assert (appts_after + meds_after) > (appts_before + meds_before)
 
 
+# ---------------- private vault (PIN-locked sensitive content) ----------------
+class TestPrivateVault:
+    def test_pin_set_unlock_and_redaction(self):
+        token = _demo("patient")["token"]
+        h = _h(token)
+        # Set/refresh a known PIN (allowed because demo patient is reused).
+        st = requests.get(f"{API}/capture/vault/status", headers=h, timeout=15).json()
+        pin_body = {"pin": "13579"}
+        if st.get("pin_set"):
+            # We don't know the old PIN in CI; skip the change path and just exercise unlock guard.
+            wrong = requests.post(f"{API}/capture/vault/unlock", headers=h, json={"pin": "00000"}, timeout=15)
+            assert wrong.status_code in (403, 429)
+            return
+        assert requests.post(f"{API}/capture/vault/pin", headers=h, json=pin_body, timeout=15).status_code == 200
+        # Wrong PIN rejected.
+        assert requests.post(f"{API}/capture/vault/unlock", headers=h, json={"pin": "99999"}, timeout=15).status_code == 403
+        # Correct PIN unlocks (items list, possibly empty).
+        ok = requests.post(f"{API}/capture/vault/unlock", headers=h, json=pin_body, timeout=15)
+        assert ok.status_code == 200 and "items" in ok.json()
+
+    def test_short_pin_rejected(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/capture/vault/pin", headers=_h(token), json={"pin": "12"}, timeout=15)
+        assert r.status_code == 400
+
+
+# ---------------- AI usage cap ----------------
+class TestUsageCap:
+    def test_usage_endpoint_shape(self):
+        token = _demo("patient")["token"]
+        r = requests.get(f"{API}/usage/today", headers=_h(token), timeout=15)
+        assert r.status_code == 200
+        d = r.json()
+        for k in ("est_cost", "ops", "cap", "remaining"):
+            assert k in d
+
+
+# ---------------- continuous capture append ----------------
+class TestContinuousAppend:
+    def test_append_does_not_finalize_session(self):
+        token = _demo("patient")["token"]
+        h = _h(token)
+        requests.patch(f"{API}/capture/settings", json={"private_mode": False}, headers=h, timeout=15)
+        sid = requests.post(f"{API}/capture/sessions", headers=h,
+                            json={"mode": "capture", "title": f"Live {uuid.uuid4().hex[:6]}",
+                                  "consent_confirmed": True}, timeout=30).json()["id"]
+        r = requests.post(f"{API}/capture/sessions/{sid}/append", headers=h,
+                          json={"transcript": "Had breakfast with Sarah this morning."}, timeout=90)
+        assert r.status_code == 200, r.text
+        assert "context" in r.json()
+        # Session must still be active (append never completes it).
+        s = requests.get(f"{API}/capture/sessions/{sid}", headers=h, timeout=15).json()
+        assert s["status"] == "active"
+
+
 # ---------------- privacy review edit ----------------
 class TestReviewEdit:
     def test_edit_action_and_unknown_action(self):

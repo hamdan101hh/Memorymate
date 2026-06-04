@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from db import db
 from auth import get_current_user, require_role, _log
 import ai
+import usage
 
 router = APIRouter(prefix="/api", tags=["app"])
 
@@ -111,7 +112,9 @@ async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_use
     pid = await patient_id_for(user)
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add some text before saving.")
+    await usage.assert_within_cap(pid)
     extracted = await ai.process_transcript(body.transcript)
+    await usage.record(pid, "memory", in_chars=len(body.transcript), out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
     now = NOW()
     mem_id = str(uuid.uuid4())
     memory = {
@@ -499,11 +502,20 @@ async def chat_send(body: ChatMessage, user: dict = Depends(get_current_user)):
         "role": "user", "message": body.message, "created_at": now})
     history = await db.chat_messages.find({"patient_id": pid}, PROJ).sort("created_at", 1).to_list(50)
     context = await _build_context(pid)
+    await usage.assert_within_cap(pid)
     answer = await ai.answer_question(context, history, body.message)
+    await usage.record(pid, "assistant", in_chars=len(context) + len(body.message), out_chars=len(answer), tier="primary")
     await db.chat_messages.insert_one({
         "id": str(uuid.uuid4()), "patient_id": pid, "user_id": user["id"],
         "role": "assistant", "message": answer, "created_at": NOW()})
     return {"answer": answer}
+
+
+# ---------------- AI usage ----------------
+@router.get("/usage/today")
+async def usage_today(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    return await usage.usage_summary(pid)
 
 
 # ---------------- today's summary ----------------
@@ -538,7 +550,9 @@ async def summary_today(user: dict = Depends(get_current_user)):
 async def gen_caregiver_summary(user: dict = Depends(require_role("caregiver", "admin"))):
     pid = await patient_id_for(user)
     context = await _build_context(pid)
+    await usage.assert_within_cap(pid)
     text = await ai.caregiver_summary(context)
+    await usage.record(pid, "caregiver_summary", in_chars=len(context), out_chars=len(text), tier="primary")
     return {"summary": text}
 
 

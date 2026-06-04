@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useCaptureSession } from "./useCaptureSession";
+import { useSpeechToText } from "./useSpeechToText";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
+import { Checkbox } from "../../components/ui/checkbox";
 import {
   Pause, Play, Square, Plus, Loader2, Sparkles, Bell, Users, MapPin,
   Pill, CalendarClock, Lock, ShieldQuestion, CheckCircle2, ArrowLeft, ListChecks,
+  Mic, MicOff, Infinity as InfinityIcon,
 } from "lucide-react";
 
 const TYPE_BADGE = {
@@ -65,25 +68,112 @@ function ActiveCaptureBanner({ session, status, onStatus, onFocusNote }) {
   );
 }
 
-function CaptureInputs({ isMeeting, processing, onAddNote, onProcess, noteRef }) {
+const CONTEXT_LABEL = {
+  meeting: "Meeting", family_visit: "Family visit", doctor: "Doctor",
+  phone_call: "Phone call", routine: "Routine", general: "General",
+};
+
+function CaptureInputs({ isMeeting, processing, onAddNote, onProcess, onAppend, noteRef }) {
   const [note, setNote] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [continuous, setContinuous] = useState(false);
+  const [liveEvents, setLiveEvents] = useState([]);
+  const [context, setContext] = useState(null);
+  const [flushing, setFlushing] = useState(false);
+  const bufferRef = useRef("");
   const submitNote = async () => { if (await onAddNote(note)) setNote(""); };
+
+  // Free, on-device dictation — appends recognized speech to the transcript and,
+  // in continuous mode, to the flush buffer that is auto-saved periodically.
+  const appendSpeech = useCallback((text) => {
+    setTranscript((prev) => (prev ? `${prev.trimEnd()} ${text}` : text).trimStart());
+    bufferRef.current = `${bufferRef.current} ${text}`.trim();
+  }, []);
+  const { listening, interim, supported, toggle } = useSpeechToText({ onResult: appendSpeech });
+
+  const flush = useCallback(async () => {
+    const text = bufferRef.current.trim();
+    if (!text || !onAppend) return;
+    bufferRef.current = "";
+    setFlushing(true);
+    const data = await onAppend(text);
+    setFlushing(false);
+    if (data) {
+      if (data.context) setContext(data.context);
+      if (data.events?.length) setLiveEvents((prev) => [...data.events, ...prev]);
+    }
+  }, [onAppend]);
+
+  // Auto-save buffered dictation every 20s while always-on capture is running.
+  useEffect(() => {
+    if (!continuous || !listening) return undefined;
+    const t = setInterval(() => { flush(); }, 20000);
+    return () => clearInterval(t);
+  }, [continuous, listening, flush]);
+
   return (
     <div className="space-y-4 mb-6">
       <div className="flex gap-2">
         <Input ref={noteRef} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a manual note during the session…" className="h-11 rounded-xl" data-testid="capture-note-input" />
         <Button onClick={submitNote} variant="outline" className="rounded-xl h-11">Add</Button>
       </div>
+
+      {supported && (
+        <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-stone-700 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5" data-testid="capture-continuous-toggle">
+          <Checkbox checked={continuous} onCheckedChange={(v) => setContinuous(!!v)} />
+          <InfinityIcon className="w-4 h-4 text-sky-600" /> Continuous (always-on) — auto-save events while I speak
+        </label>
+      )}
+
       <div>
-        <label className="text-sm font-semibold">Transcript (paste for testing)</label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-semibold">What was said</label>
+          {supported && (
+            <Button
+              type="button" size="sm" onClick={toggle}
+              className={`rounded-xl ${listening ? "bg-red-600 hover:bg-red-700" : "bg-sky-600 hover:bg-sky-700"}`}
+              data-testid="capture-dictate-btn"
+            >
+              {listening ? <><MicOff className="w-4 h-4 mr-1" /> Stop dictation</> : <><Mic className="w-4 h-4 mr-1" /> Speak (free)</>}
+            </Button>
+          )}
+        </div>
+        {listening && (
+          <div className="mt-1 flex items-center gap-2 text-sm text-red-600" data-testid="capture-listening-indicator">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" /> Listening on this device…
+            {flushing && <span className="text-sky-600">saving…</span>}
+            {interim && <span className="text-stone-400 italic truncate">{interim}</span>}
+          </div>
+        )}
         <Textarea value={transcript} onChange={(e) => setTranscript(e.target.value)}
-          placeholder="Paste or type what was said. The AI will filter it and divide it into separate memory events."
+          placeholder="Tap “Speak (free)” to dictate on this device, or type/paste what was said. The AI filters it and divides it into separate memory events."
           className="mt-1 min-h-[140px] rounded-xl" data-testid="capture-transcript-input" />
+        {!supported && (
+          <p className="mt-1 text-xs text-stone-400">On-device dictation isn’t supported in this browser — type or paste the transcript instead.</p>
+        )}
       </div>
-      <Button onClick={() => onProcess(transcript)} disabled={processing} className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-base" data-testid="capture-process-btn">
-        {processing ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Filtering & dividing…</> : <><Sparkles className="w-5 h-5 mr-2" /> {isMeeting ? "End meeting & summarize" : "Process & save"}</>}
-      </Button>
+
+      {continuous ? (
+        <div className="space-y-3" data-testid="continuous-panel">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-stone-600">
+              {context && <>Detected: <span className="font-semibold">{CONTEXT_LABEL[context] || context}</span> · </>}
+              {liveEvents.length} event(s) saved so far.
+            </p>
+            <Button size="sm" variant="outline" onClick={flush} disabled={flushing} className="rounded-xl" data-testid="capture-flush-btn">
+              {flushing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save now"}
+            </Button>
+          </div>
+          {liveEvents.length > 0 && (
+            <div className="space-y-2">{liveEvents.map((ev) => <EventCard key={ev.id} ev={ev} />)}</div>
+          )}
+          <p className="text-xs text-stone-400">Press Stop in the banner above to end the session.</p>
+        </div>
+      ) : (
+        <Button onClick={() => onProcess(transcript)} disabled={processing} className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-base" data-testid="capture-process-btn">
+          {processing ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Filtering & dividing…</> : <><Sparkles className="w-5 h-5 mr-2" /> {isMeeting ? "End meeting & summarize" : "Process & save"}</>}
+        </Button>
+      )}
     </div>
   );
 }
@@ -155,6 +245,13 @@ function SessionSummary({ result, isMeeting, base, navigate }) {
         </div>
       )}
 
+      {result.locked_count > 0 && (
+        <div className="mt-5 rounded-xl bg-stone-900 text-white p-4" data-testid="session-vault-notice">
+          <p className="text-sm flex items-center gap-2"><Lock className="w-5 h-5" /> {result.locked_count} sensitive item(s) were locked in your Private Vault.</p>
+          <Button size="sm" onClick={() => navigate(`${base}/capture/vault`)} className="mt-2 rounded-xl bg-white/10 hover:bg-white/20" data-testid="goto-vault-btn">Open Private Vault</Button>
+        </div>
+      )}
+
       <div className="mt-6 flex gap-3">
         <Button variant="outline" onClick={() => navigate(`${base}/capture`)} className="rounded-xl h-11" data-testid="new-capture-btn">New capture</Button>
         <Button onClick={() => navigate(base)} className="rounded-xl h-11 bg-sky-600 hover:bg-sky-700" data-testid="capture-done-btn"><CheckCircle2 className="w-4 h-4 mr-1" /> Done</Button>
@@ -168,7 +265,7 @@ export default function CaptureSession() {
   const base = user.role === "patient" ? "/patient" : "/caregiver";
   const navigate = useNavigate();
   const noteRef = useRef(null);
-  const { session, status, processing, result, changeStatus, addNote, process } = useCaptureSession();
+  const { session, status, processing, result, changeStatus, addNote, process, append } = useCaptureSession();
 
   if (!session) return <div className="grid place-items-center py-20"><Loader2 className="w-7 h-7 animate-spin text-sky-600" /></div>;
   const isMeeting = session.mode === "meeting";
@@ -180,7 +277,7 @@ export default function CaptureSession() {
       {status !== "completed" && (
         <>
           <ActiveCaptureBanner session={session} status={status} onStatus={changeStatus} onFocusNote={() => noteRef.current?.focus()} />
-          <CaptureInputs isMeeting={isMeeting} processing={processing} onAddNote={addNote} onProcess={process} noteRef={noteRef} />
+          <CaptureInputs isMeeting={isMeeting} processing={processing} onAddNote={addNote} onProcess={process} onAppend={append} noteRef={noteRef} />
         </>
       )}
 
