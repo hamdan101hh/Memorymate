@@ -51,6 +51,22 @@ Architecture: **Frontend** (React) on Vercel · **Backend** (FastAPI) on Render 
 
 ---
 
+## 6. WhatsApp bot (optional)
+
+The bot saves inbound WhatsApp messages as memories and sends reminders/summaries.
+It needs the backend deployed (steps 1–4) so Meta can reach the webhook.
+
+1. In [Meta for Developers](https://developers.facebook.com): create an app → add **WhatsApp** → get a test number, `Phone number ID`, and an access token.
+2. In Render, set: `WHATSAPP_VERIFY_TOKEN` (any string you choose), `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` (and optionally `WHATSAPP_APP_SECRET`). Redeploy.
+3. In Meta → WhatsApp → Configuration → **Webhook**:
+   - Callback URL: `https://<your-api>.onrender.com/api/whatsapp/webhook`
+   - Verify token: the same `WHATSAPP_VERIFY_TOKEN`
+   - Subscribe to the **messages** field.
+4. In the app (Caregiver → **WhatsApp Bot**) link the patient's/family numbers.
+5. Proactive reminders need an **approved message template**; create one in Meta, then set `WHATSAPP_REMINDER_TEMPLATE` to its name. For automatic sends, point a scheduler (Render Cron Job or cron-job.org) at `POST /api/whatsapp/cron/due-reminders` with header `X-Cron-Secret: <CRON_SECRET>`.
+
+> Note: free-form replies only work within 24h of the user messaging you — that's a Meta rule, which is why proactive reminders use templates.
+
 ## CLI alternative (optional)
 
 ```bash

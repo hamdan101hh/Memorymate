@@ -2,7 +2,7 @@ import { Outlet } from "react-router-dom";
 import DashboardShell from "../../components/DashboardShell";
 import {
   LayoutDashboard, UserRound, Clock, Bell, Pill, CalendarClock,
-  Users, MapPin, AlertTriangle, StickyNote, Settings, Radio, ShieldQuestion, Share2, BookHeart, HeartHandshake,
+  Users, MapPin, AlertTriangle, StickyNote, Settings, Radio, ShieldQuestion, Share2, BookHeart, HeartHandshake, MessageSquare,
 } from "lucide-react";
 
 const ITEMS = [
@@ -21,6 +21,7 @@ const ITEMS = [
   { to: "/caregiver/alerts", label: "Alerts", icon: AlertTriangle },
   { to: "/caregiver/notes", label: "Caregiver Notes", icon: StickyNote },
   { to: "/caregiver/share", label: "Share & Export", icon: Share2 },
+  { to: "/caregiver/whatsapp", label: "WhatsApp Bot", icon: MessageSquare },
   { to: "/caregiver/settings", label: "Settings", icon: Settings },
 ];
 

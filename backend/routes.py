@@ -108,22 +108,26 @@ def _bucket_now() -> str:
     return "morning" if h < 12 else "afternoon" if h < 18 else "evening"
 
 
-@router.post("/memories")
-async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_user)):
-    pid = await patient_id_for(user)
-    if not body.transcript.strip():
-        raise HTTPException(status_code=400, detail="Please add some text before saving.")
+async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[str] = None,
+                                  source: str = "manual", location: Optional[dict] = None,
+                                  by_user_id: str = "system", by_role: str = "patient") -> dict:
+    """Shared memory pipeline: AI extraction + persistence + auto-reminders.
+
+    Used by the web app (create_memory) and by external channels (e.g. WhatsApp),
+    so every entry point produces identical, AI-processed memories. Raises 429 via
+    usage.assert_within_cap when the patient's daily AI budget is exhausted.
+    """
     await usage.assert_within_cap(pid)
-    extracted = await ai.process_transcript(body.transcript)
-    await usage.record(pid, "memory", in_chars=len(body.transcript), out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
+    extracted = await ai.process_transcript(transcript)
+    await usage.record(pid, "memory", in_chars=len(transcript),
+                       out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
     now = NOW()
     mem_id = str(uuid.uuid4())
     memory = {
         "id": mem_id, "patient_id": pid,
-        "created_by_user_id": user["id"], "created_by_role": user["role"],
-        "title": body.title or extracted.get("title") or "Memory note",
-        "transcript": body.transcript, "source": body.source,
-        "location": body.location,
+        "created_by_user_id": by_user_id, "created_by_role": by_role,
+        "title": title or extracted.get("title") or "Memory note",
+        "transcript": transcript, "source": source, "location": location,
         "simple_summary": extracted.get("simple_summary", ""),
         "timeline": extracted.get("timeline") or _bucket_now(),
         "people_mentioned": extracted.get("people", []),
@@ -135,18 +139,26 @@ async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_use
         "created_at": now,
     }
     await db.memories.insert_one(memory)
-
-    # Auto-create reminders from extraction
     for r in extracted.get("reminders", []):
         await db.reminders.insert_one({
-            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": by_user_id,
             "title": r.get("title", "Reminder"), "description": "",
             "category": r.get("category", "custom"), "priority": r.get("priority", "medium"),
             "due_date": "", "due_time": "", "repeat_rule": "none",
             "status": "pending", "source": "ai", "created_at": now, "completed_at": None,
         })
-    await _log(user["id"], "create_memory", "memory", mem_id)
+    await _log(by_user_id, "create_memory", "memory", mem_id)
     return {k: v for k, v in memory.items() if k != "_id"}
+
+
+@router.post("/memories")
+async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    if not body.transcript.strip():
+        raise HTTPException(status_code=400, detail="Please add some text before saving.")
+    return await save_memory_for_patient(
+        pid, body.transcript, title=body.title, source=body.source, location=body.location,
+        by_user_id=user["id"], by_role=user["role"])
 
 
 @router.get("/memories")

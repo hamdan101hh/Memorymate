@@ -242,3 +242,36 @@ class TestFamilyCircle:
         if len(fulls) == 1:
             r = requests.delete(f"{API}/family/{fulls[0]['link_id']}", headers=cg, timeout=15)
             assert r.status_code == 400
+
+
+# ---------------- whatsapp bot ----------------
+class TestWhatsApp:
+    def test_status_caregiver_only(self):
+        cg = _h(_demo("caregiver")["token"])
+        pt = _h(_demo("patient")["token"])
+        r = requests.get(f"{API}/whatsapp/status", headers=cg, timeout=15)
+        assert r.status_code == 200 and "configured" in r.json()
+        assert requests.get(f"{API}/whatsapp/status", headers=pt, timeout=15).status_code == 403
+
+    def test_link_crud(self):
+        cg = _h(_demo("caregiver")["token"])
+        phone = f"15550{uuid.uuid4().int % 100000:05d}"
+        created = requests.post(f"{API}/whatsapp/links", headers=cg,
+                                json={"phone": phone, "name": "Test", "role": "family"}, timeout=15)
+        assert created.status_code == 200, created.text
+        lid = created.json()["id"]
+        assert any(l["id"] == lid for l in requests.get(f"{API}/whatsapp/links", headers=cg, timeout=15).json())
+        assert requests.delete(f"{API}/whatsapp/links/{lid}", headers=cg, timeout=15).status_code == 200
+
+    def test_webhook_verify_rejects_bad_token(self):
+        r = requests.get(f"{API}/whatsapp/webhook",
+                         params={"hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "123"},
+                         timeout=15)
+        assert r.status_code == 403
+
+    def test_inbound_unknown_number_does_not_crash(self):
+        # Unlinked sender: handler must swallow errors and still return 200 so Meta doesn't retry-storm.
+        payload = {"entry": [{"changes": [{"value": {"messages": [
+            {"from": "10000000000", "type": "text", "text": {"body": "hello"}}]}}]}]}
+        r = requests.post(f"{API}/whatsapp/webhook", json=payload, timeout=30)
+        assert r.status_code == 200 and r.json().get("ok") is True

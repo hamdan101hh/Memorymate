@@ -12,6 +12,7 @@ from db import ensure_indexes
 import auth
 import routes
 import capture
+import whatsapp
 import seed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -22,6 +23,7 @@ app = FastAPI(title="MemoryMate API")
 app.include_router(auth.router)
 app.include_router(routes.router)
 app.include_router(capture.router)
+app.include_router(whatsapp.router)
 
 
 @app.get("/api/")

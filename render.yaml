@@ -39,3 +39,16 @@ services:
       #   value: gpt-4o-mini
       # - key: DAILY_AI_COST_CAP_USD
       #   value: "0.50"
+      # --- optional WhatsApp bot (Meta Cloud API) ---
+      # - key: WHATSAPP_VERIFY_TOKEN
+      #   sync: false
+      # - key: WHATSAPP_ACCESS_TOKEN
+      #   sync: false
+      # - key: WHATSAPP_PHONE_NUMBER_ID
+      #   sync: false
+      # - key: WHATSAPP_APP_SECRET
+      #   sync: false
+      # - key: WHATSAPP_REMINDER_TEMPLATE
+      #   sync: false
+      # - key: CRON_SECRET
+      #   generateValue: true
