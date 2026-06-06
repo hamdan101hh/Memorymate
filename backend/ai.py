@@ -73,6 +73,30 @@ def _chat(system_message: str, session_id: str | None = None, cheap: bool = Fals
     ).with_model(provider, model)
 
 
+# ---- user message-style preferences (set during Always-On onboarding) ----
+NOTE_STYLES = {
+    "short": "Write the summary VERY short and simple — one easy sentence.",
+    "warm": "Write the summary in a warm, gentle, reassuring tone of 2-4 short sentences.",
+    "detailed": "Write a clear, detailed summary that covers all the useful points.",
+    "bullets": "Write the summary as a few short bullet points, each starting with '- '.",
+    "family": "Write a friendly family-update style summary, as if telling a relative how the day went.",
+    "caregiver": "Write a concise, factual caregiver-report style summary.",
+}
+REMINDER_TONES = {
+    "gentle": "When mentioning reminders, phrase them gently, e.g. 'It may be time to take your medicine.'",
+    "direct": "When mentioning reminders, be clear and direct, e.g. 'Take your medicine at 8 PM.'",
+    "family": "When mentioning reminders, use a warm family tone, e.g. 'Your family wanted to remind you about your medicine.'",
+}
+
+
+def _note_style_hint(style: str | None) -> str:
+    return "\nWRITING STYLE: " + NOTE_STYLES.get(style or "warm", NOTE_STYLES["warm"]) + "\n"
+
+
+def _reminder_tone_hint(tone: str | None) -> str:
+    return "\n" + REMINDER_TONES.get(tone or "gentle", REMINDER_TONES["gentle"]) + "\n"
+
+
 def _extract_json(text: str) -> dict:
     """Pull the first JSON object out of an LLM response, defensively.
 
@@ -98,7 +122,7 @@ def _extract_json(text: str) -> dict:
         return json.loads(cleaned)
 
 
-async def process_transcript(transcript: str) -> dict:
+async def process_transcript(transcript: str, style: str | None = None) -> dict:
     """Turn a raw memory transcript into a structured summary + extractions."""
     fallback = {
         "title": "Memory note",
@@ -123,6 +147,7 @@ async def process_transcript(transcript: str) -> dict:
         '  "caregiver_notes": ["short note for the caregiver"]\n'
         "}\n"
         "Use empty arrays when nothing applies. Do not invent anything not in the transcript."
+        + _note_style_hint(style)
     )
     try:
         chat = _chat(system, cheap=True)
@@ -136,15 +161,16 @@ async def process_transcript(transcript: str) -> dict:
         return fallback
 
 
-async def answer_question(context: str, history: list[dict], question: str) -> str:
+async def answer_question(context: str, history: list[dict], question: str, tone: str | None = None) -> str:
     """Answer a patient question grounded strictly on their saved data."""
     system = (
         SAFETY_RULES
         + "\nAnswer the person's question using ONLY the saved information below. "
         "If the answer is not in the saved information, gently say: "
         "\"I don't have that saved yet. You can ask your caregiver to add it.\" "
-        "Keep answers to 1-3 short, warm sentences.\n\n"
-        "=== SAVED INFORMATION ===\n" + context + "\n=== END ==="
+        "Keep answers to 1-3 short, warm sentences."
+        + _reminder_tone_hint(tone) +
+        "\n=== SAVED INFORMATION ===\n" + context + "\n=== END ==="
     )
     try:
         chat = _chat(system)
@@ -228,7 +254,7 @@ CAPTURE_RULES = (
 )
 
 
-async def filter_capture_transcript(transcript: str, meta: dict | None = None) -> dict:
+async def filter_capture_transcript(transcript: str, meta: dict | None = None, style: str | None = None) -> dict:
     """Classify + divide a capture transcript into discrete memory events and review items."""
     fallback = {"context": "general", "events": [], "review_items": []}
     meta = meta or {}
@@ -266,6 +292,7 @@ async def filter_capture_transcript(transcript: str, meta: dict | None = None) -
         "reminders ['Doctor appointment']; "
         "(3) title 'Pharmacy visit', event_type 'memory_event', places ['Pharmacy'].\n\n"
         f"Session context: {ctx}"
+        + _note_style_hint(style)
     )
     try:
         chat = _chat(system, cheap=True)

@@ -49,6 +49,7 @@ const AdminCollections = lazy(() => import("./pages/admin/AdminCollections"));
 const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
 
 const CaptureStart = lazy(() => import("./pages/capture/CaptureStart"));
+const AlwaysOnSetup = lazy(() => import("./pages/capture/AlwaysOnSetup"));
 const CaptureSession = lazy(() => import("./pages/capture/CaptureSession"));
 const CaptureSessions = lazy(() => import("./pages/capture/CaptureSessions"));
 const PrivacyReview = lazy(() => import("./pages/capture/PrivacyReview"));
@@ -101,6 +102,7 @@ function AppRoutes() {
         <Route path="settings" element={<PatientSettings />} />
         <Route path="capture" element={<CaptureStart mode="capture" />} />
         <Route path="meeting" element={<CaptureStart mode="meeting" />} />
+        <Route path="capture/always-on" element={<AlwaysOnSetup />} />
         <Route path="capture/session/:id" element={<CaptureSession />} />
         <Route path="capture/review" element={<PrivacyReview />} />
         <Route path="capture/vault" element={<PrivacyVault />} />
@@ -123,6 +125,7 @@ function AppRoutes() {
         <Route path="settings" element={<CgSettings />} />
         <Route path="capture" element={<CaptureStart mode="capture" />} />
         <Route path="meeting" element={<CaptureStart mode="meeting" />} />
+        <Route path="capture/always-on" element={<AlwaysOnSetup />} />
         <Route path="capture/sessions" element={<CaptureSessions />} />
         <Route path="capture/session/:id" element={<CaptureSession />} />
         <Route path="capture/review" element={<PrivacyReview />} />

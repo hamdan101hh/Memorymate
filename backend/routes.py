@@ -118,7 +118,8 @@ async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[
     usage.assert_within_cap when the patient's daily AI budget is exhausted.
     """
     await usage.assert_within_cap(pid)
-    extracted = await ai.process_transcript(transcript)
+    _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
+    extracted = await ai.process_transcript(transcript, style=_sdoc.get("note_style"))
     await usage.record(pid, "memory", in_chars=len(transcript),
                        out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
     now = NOW()
@@ -653,7 +654,8 @@ async def chat_send(body: ChatMessage, user: dict = Depends(get_current_user)):
     history = await db.chat_messages.find({"patient_id": pid}, PROJ).sort("created_at", 1).to_list(50)
     context = await _build_context(pid)
     await usage.assert_within_cap(pid)
-    answer = await ai.answer_question(context, history, body.message)
+    _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "reminder_tone": 1}) or {}
+    answer = await ai.answer_question(context, history, body.message, tone=_sdoc.get("reminder_tone"))
     await usage.record(pid, "assistant", in_chars=len(context) + len(body.message), out_chars=len(answer), tier="primary")
     await db.chat_messages.insert_one({
         "id": str(uuid.uuid4()), "patient_id": pid, "user_id": user["id"],

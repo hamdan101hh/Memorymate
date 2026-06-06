@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Disclaimer } from "../../components/common";
 import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Infinity as InfinityIcon, MapPin } from "lucide-react";
+import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Infinity as InfinityIcon, MapPin, Pencil, Bell } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CaptureSettings() {
@@ -75,6 +75,33 @@ export default function CaptureSettings() {
         </Row>
       </Card>
 
+      <Card title="How MemoryMate writes">
+        <Row icon={Pencil} label="Memory note style">
+          <Select value={s.note_style || "warm"} onValueChange={(v) => update({ note_style: v })}>
+            <SelectTrigger className="w-48 rounded-xl" data-testid="setting-note-style"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="short">Very short & simple</SelectItem>
+              <SelectItem value="warm">Warm & gentle</SelectItem>
+              <SelectItem value="detailed">Detailed summary</SelectItem>
+              <SelectItem value="bullets">Bullet points</SelectItem>
+              <SelectItem value="family">Family-friendly</SelectItem>
+              <SelectItem value="caregiver">Caregiver report</SelectItem>
+            </SelectContent>
+          </Select>
+        </Row>
+        <Row icon={Bell} label="Reminder tone">
+          <Select value={s.reminder_tone || "gentle"} onValueChange={(v) => update({ reminder_tone: v })}>
+            <SelectTrigger className="w-40 rounded-xl" data-testid="setting-reminder-tone"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gentle">Gentle</SelectItem>
+              <SelectItem value="direct">Direct</SelectItem>
+              <SelectItem value="family">Family tone</SelectItem>
+            </SelectContent>
+          </Select>
+        </Row>
+        <p className="text-xs text-stone-400 pt-2">This sets how memory notes and reminders are worded across the app.</p>
+      </Card>
+
       <Card title="Location">
         <Row icon={MapPin} label="Allow attaching location to memories">
           <Switch checked={!!s.location_enabled} onCheckedChange={(v) => update({ location_enabled: v })} data-testid="setting-location" />
@@ -82,9 +109,12 @@ export default function CaptureSettings() {
         <p className="text-xs text-stone-400 pt-2">When on, you can choose to attach your location to a memory. It is never attached automatically.</p>
       </Card>
 
-      <div className="rounded-2xl border-2 border-sky-200 bg-sky-50 p-5 mb-5" data-testid="always-on-note">
-        <div className="flex items-center gap-2 font-semibold text-sky-800"><InfinityIcon className="w-5 h-5" /> Always-On (Continuous) Capture is available</div>
-        <p className="text-sm text-stone-600 mt-1">Inside a capture session, turn on “Continuous (always-on)” to auto-save events while you speak, using free on-device dictation. A visible indicator stays on the whole time, and you can pause or stop anytime.</p>
+      <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 mb-5" data-testid="always-on-note">
+        <div className="flex items-center gap-2 font-semibold text-emerald-800"><InfinityIcon className="w-5 h-5" /> Always-On Memory Capture</div>
+        <p className="text-sm text-stone-600 mt-1">Set a duration once and MemoryMate keeps listening in the background, saving only useful memories using free on-device dictation. A visible “Memory Capture is ON” status stays the whole time, and you can pause, stop, or delete recent capture anytime.</p>
+        <button onClick={() => navigate(`${base}/capture/always-on`)} className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2" data-testid="settings-setup-always-on">
+          <InfinityIcon className="w-4 h-4" /> Set up Always-On capture
+        </button>
       </div>
 
       <div className="rounded-xl bg-white border border-stone-200 p-5">

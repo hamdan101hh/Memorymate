@@ -5,8 +5,14 @@ import { Button } from "../../components/ui/button";
 import {
   UserRound, CheckCircle2, AlertTriangle, Bell, Pill, CalendarClock,
   Sparkles, Loader2, Clock, StickyNote, ArrowRight, Radio, Video, ShieldQuestion,
+  Infinity as InfinityIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+
+const DURATION_LABEL = {
+  "1d": "for 1 day", "1w": "for 1 week", "1m": "for 1 month",
+  until_off: "until turned off", custom: "custom end date",
+};
 
 export default function CaregiverDashboard() {
   const [d, setD] = useState({});
@@ -17,9 +23,9 @@ export default function CaregiverDashboard() {
     Promise.all([
       api.get("/patient/overview"), api.get("/reminders"), api.get("/alerts"),
       api.get("/memories"), api.get("/medications"), api.get("/appointments"), api.get("/notes"),
-      api.get("/capture/sessions"), api.get("/capture/review"),
-    ]).then(([ov, rem, al, mem, med, ap, nt, cap, rev]) => {
-      setD({ ov: ov.data, reminders: rem.data, alerts: al.data, memories: mem.data, meds: med.data, appts: ap.data, notes: nt.data, sessions: cap.data, review: rev.data });
+      api.get("/capture/sessions"), api.get("/capture/review"), api.get("/capture/status"),
+    ]).then(([ov, rem, al, mem, med, ap, nt, cap, rev, st]) => {
+      setD({ ov: ov.data, reminders: rem.data, alerts: al.data, memories: mem.data, meds: med.data, appts: ap.data, notes: nt.data, sessions: cap.data, review: rev.data, status: st.data });
     });
   }, []);
 
@@ -51,6 +57,23 @@ export default function CaregiverDashboard() {
         <div className="mb-6 rounded-xl bg-sky-50 border border-sky-200 p-5" data-testid="ai-summary-card">
           <div className="flex items-center gap-2 font-semibold text-sky-800 mb-2"><Sparkles className="w-5 h-5" /> AI Caregiver Summary</div>
           <p className="whitespace-pre-wrap text-stone-700 leading-relaxed text-sm">{summary}</p>
+        </div>
+      )}
+
+      {d.status?.always_on && (
+        <div className="mb-6 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 flex flex-wrap items-center justify-between gap-3" data-testid="cg-capture-status">
+          <div className="flex items-center gap-3">
+            <span className={`grid place-items-center w-3.5 h-3.5 rounded-full ${d.status.paused ? "bg-amber-400" : "bg-emerald-500 animate-pulse"}`} />
+            <div>
+              <p className="font-semibold text-emerald-900 flex items-center gap-1.5">
+                <InfinityIcon className="w-4 h-4" /> Memory Capture is {d.status.paused ? "PAUSED" : "ON"} · {DURATION_LABEL[d.status.duration] || d.status.duration}
+              </p>
+              {d.status.last_captured && <p className="text-sm text-emerald-900/70">Last memory: {d.status.last_captured.title}</p>}
+            </div>
+          </div>
+          <Link to="/caregiver/capture/review" className="text-sm font-medium text-emerald-800 hover:text-emerald-900 inline-flex items-center gap-1">
+            {d.status.review_count || 0} to review <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
       )}
 

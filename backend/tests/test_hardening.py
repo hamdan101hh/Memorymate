@@ -275,3 +275,65 @@ class TestWhatsApp:
             {"from": "10000000000", "type": "text", "text": {"body": "hello"}}]}}]}]}
         r = requests.post(f"{API}/whatsapp/webhook", json=payload, timeout=30)
         assert r.status_code == 200 and r.json().get("ok") is True
+
+
+# ---------------- always-on memory capture ----------------
+class TestAlwaysOn:
+    def test_start_requires_consent(self):
+        pt = _h(_demo("patient")["token"])
+        r = requests.post(f"{API}/capture/always-on/start", headers=pt,
+                          json={"duration": "1w", "consent_confirmed": False}, timeout=15)
+        assert r.status_code == 400
+
+    def test_start_rejects_bad_duration(self):
+        pt = _h(_demo("patient")["token"])
+        r = requests.post(f"{API}/capture/always-on/start", headers=pt,
+                          json={"duration": "forever", "consent_confirmed": True}, timeout=15)
+        assert r.status_code == 400
+
+    def test_start_pause_stop_lifecycle(self):
+        pt = _h(_demo("patient")["token"])
+        # make sure private mode is off
+        requests.patch(f"{API}/capture/settings", headers=pt, json={"private_mode": False}, timeout=15)
+        started = requests.post(f"{API}/capture/always-on/start", headers=pt,
+                                json={"duration": "1w", "note_style": "short",
+                                      "reminder_tone": "direct", "consent_confirmed": True}, timeout=15)
+        assert started.status_code == 200, started.text
+        s = started.json()
+        assert s["always_on"] is True and s["active"] is True
+        assert s["duration"] == "1w" and s["seconds_remaining"] > 0
+        assert s["note_style"] == "short" and s["reminder_tone"] == "direct"
+
+        paused = requests.post(f"{API}/capture/always-on/pause", headers=pt, json={"paused": True}, timeout=15).json()
+        assert paused["paused"] is True and paused["active"] is False
+
+        stopped = requests.post(f"{API}/capture/always-on/stop", headers=pt, timeout=15).json()
+        assert stopped["always_on"] is False and stopped["active"] is False
+
+    def test_status_shape(self):
+        pt = _h(_demo("patient")["token"])
+        st = requests.get(f"{API}/capture/status", headers=pt, timeout=15)
+        assert st.status_code == 200
+        for k in ("always_on", "paused", "active", "duration", "note_style", "reminder_tone", "review_count", "locked_count"):
+            assert k in st.json()
+
+    def test_delete_recent_returns_counts(self):
+        pt = _h(_demo("patient")["token"])
+        r = requests.delete(f"{API}/capture/recent?minutes=5", headers=pt, timeout=15)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True and "deleted_events" in body
+
+    def test_settings_persist_style_prefs(self):
+        pt = _h(_demo("patient")["token"])
+        requests.patch(f"{API}/capture/settings", headers=pt,
+                       json={"note_style": "bullets", "reminder_tone": "family"}, timeout=15)
+        s = requests.get(f"{API}/capture/settings", headers=pt, timeout=15).json()
+        assert s["note_style"] == "bullets" and s["reminder_tone"] == "family"
+
+    def test_review_add_to_vault_action_valid(self):
+        # add_to_vault must be an accepted action (404 for missing item, never 400 'unknown action').
+        pt = _h(_demo("patient")["token"])
+        r = requests.post(f"{API}/capture/review/{uuid.uuid4()}/action", headers=pt,
+                          json={"action": "add_to_vault"}, timeout=15)
+        assert r.status_code == 404

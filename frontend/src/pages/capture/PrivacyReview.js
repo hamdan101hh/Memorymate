@@ -4,13 +4,14 @@ import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "../../components/common";
 import { Button } from "../../components/ui/button";
-import { ShieldQuestion, Bell, Sparkles, Lock, Trash2, Loader2, ArrowLeft, Pencil, Check, X } from "lucide-react";
+import { ShieldQuestion, Bell, Sparkles, Lock, LockKeyhole, Trash2, Loader2, ArrowLeft, Pencil, Check, X } from "lucide-react";
 import { Textarea } from "../../components/ui/textarea";
 import { toast } from "sonner";
 
 const ACTIONS = [
-  { key: "save", label: "Save as memory", icon: Sparkles, c: "bg-sky-600 hover:bg-sky-700" },
+  { key: "save", label: "Approve & save", icon: Sparkles, c: "bg-sky-600 hover:bg-sky-700" },
   { key: "convert_reminder", label: "Convert to reminder", icon: Bell, c: "bg-violet-600 hover:bg-violet-700" },
+  { key: "add_to_vault", label: "Add to Private Vault", icon: LockKeyhole, c: "bg-stone-900 hover:bg-stone-800" },
   { key: "mark_private", label: "Mark private", icon: Lock, c: "bg-stone-600 hover:bg-stone-700" },
   { key: "delete", label: "Delete", icon: Trash2, c: "bg-red-600 hover:bg-red-700" },
 ];
