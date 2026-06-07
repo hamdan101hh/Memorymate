@@ -283,7 +283,8 @@ async def cron_run(request: Request):
 
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
-    out = {"reminders": 0, "missed": 0, "daily_summary": 0, "privacy_review": 0, "capture_status": 0}
+    out = {"reminders": 0, "appointments": 0, "daily_checkin": 0, "missed": 0,
+           "daily_summary": 0, "privacy_review": 0, "capture_status": 0}
 
     patient_ids = [p for p in await db.push_subscriptions.distinct("patient_id") if p]
     for pid in patient_ids:
@@ -306,6 +307,30 @@ async def cron_run(request: Request):
                        "url": "/patient/reminders", "tag": f"reminder-{r['id']}", "kind": "reminder"}
             out["reminders"] += await notify_patient(pid, "patient_reminders", payload)
             await db.reminders.update_one({"id": r["id"]}, {"$set": {"push_sent": True}})
+
+        # 1b) Appointment reminders due today (time passed, or no time set) → patient
+        appts = await db.appointments.find(
+            {"patient_id": pid, "date": today, "push_sent": {"$ne": True}}, PROJ).to_list(100)
+        for a in appts:
+            at = a.get("time") or ""
+            if at and at > loc_hhmm:
+                continue
+            when = f" at {at}" if at else " today"
+            where = f" ({a.get('location')})" if a.get("location") else ""
+            payload = {"title": "Appointment reminder",
+                       "body": f"You have an appointment{when}: {a.get('title','your appointment')}{where}.",
+                       "url": "/patient/today", "tag": f"appt-{a['id']}", "kind": "appointment"}
+            out["appointments"] += await notify_patient(pid, "patient_reminders", payload)
+            await db.appointments.update_one({"id": a["id"]}, {"$set": {"push_sent": True}})
+
+        # 1c) Gentle daily check-in → patient (once/day, morning local time)
+        loc_hour = loc_now.hour
+        if 8 <= loc_hour < 12 and not await _logged(pid, "daily_checkin", today):
+            payload = {"title": "Good morning 💙",
+                       "body": "A gentle check-in from MemoryMate. Tap to see your day.",
+                       "url": "/patient", "tag": "daily-checkin", "kind": "daily_checkin"}
+            out["daily_checkin"] += await notify_patient(pid, "patient_reminders", payload)
+            await _mark_logged(pid, "daily_checkin", today)
 
         # 2) Missed high-priority reminders → caregivers
         missed = await db.reminders.find(
