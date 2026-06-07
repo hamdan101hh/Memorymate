@@ -62,6 +62,17 @@ services:
       #   sync: false
       # - key: WHATSAPP_REMINDER_TEMPLATE
       #   sync: false
+      # --- optional Google Calendar connector (read/import/add only, never edit/delete) ---
+      # - key: GOOGLE_CLIENT_ID
+      #   sync: false
+      # - key: GOOGLE_CLIENT_SECRET
+      #   sync: false
+      # - key: GOOGLE_REDIRECT_URI
+      #   value: https://your-api.onrender.com/api/calendar/callback
+      # - key: FRONTEND_URL
+      #   value: https://your-frontend.vercel.app
+      # - key: CAL_TIMEZONE
+      #   value: UTC
 
 # Scheduled push (reminders, daily summary, privacy review, capture status).
 # A cron job calls POST /api/notifications/cron/run with the X-Cron-Secret header.

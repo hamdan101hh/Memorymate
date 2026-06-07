@@ -405,3 +405,37 @@ class TestNotifications:
         for k in ("reminders", "appointments", "daily_checkin", "missed",
                   "daily_summary", "privacy_review", "capture_status"):
             assert k in body
+
+
+# ---------------- Google Calendar connector ----------------
+class TestCalendar:
+    def test_status_requires_caregiver(self):
+        token = _demo("patient")["token"]
+        r = requests.get(f"{API}/calendar/status", headers=_h(token), timeout=15)
+        assert r.status_code == 403
+
+    def test_status_shape(self):
+        token = _demo("caregiver")["token"]
+        r = requests.get(f"{API}/calendar/status", headers=_h(token), timeout=15)
+        assert r.status_code == 200
+        body = r.json()
+        assert "configured" in body and "connected" in body
+
+    def test_events_require_connection(self):
+        # No calendar linked in tests -> 409 (or 503 if connector disabled).
+        token = _demo("caregiver")["token"]
+        r = requests.get(f"{API}/calendar/events", headers=_h(token), timeout=15)
+        assert r.status_code in (409, 503)
+
+    def test_import_validates_body(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/import", headers=_h(token), json={}, timeout=15)
+        assert r.status_code == 422  # google_event_id + title required
+
+    def test_no_edit_or_delete_endpoints(self):
+        # We intentionally do not expose calendar edit/delete. These must 404/405.
+        token = _h(_demo("caregiver")["token"])
+        r1 = requests.delete(f"{API}/calendar/events/some-id", headers=token, timeout=15)
+        r2 = requests.patch(f"{API}/calendar/events/some-id", headers=token, json={}, timeout=15)
+        assert r1.status_code in (404, 405)
+        assert r2.status_code in (404, 405)
