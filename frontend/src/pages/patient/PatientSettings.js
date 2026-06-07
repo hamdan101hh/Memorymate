@@ -7,7 +7,7 @@ import { Disclaimer } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
-import { Type, Contrast, Phone, LogOut, ShieldCheck, Loader2 } from "lucide-react";
+import { Type, Contrast, Phone, LogOut, ShieldCheck, Loader2, Bell, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export default function PatientSettings() {
@@ -41,6 +41,14 @@ export default function PatientSettings() {
         <Row icon={Contrast} label="High contrast">
           <Switch checked={settings.highContrast} onCheckedChange={(v) => updateSettings({ highContrast: v })} data-testid="toggle-high-contrast" />
         </Row>
+      </Card>
+
+      <Card title="Notifications">
+        <button onClick={() => navigate("/patient/notifications")} className="flex w-full items-center justify-between py-2 text-left" data-testid="settings-notifications-link">
+          <span className="flex items-center gap-3 text-lg"><Bell className="w-6 h-6 text-stone-500" /> Reminder notifications</span>
+          <ChevronRight className="w-5 h-5 text-stone-400" />
+        </button>
+        <p className="text-sm text-stone-500">Turn on gentle reminders and choose quiet hours.</p>
       </Card>
 
       <Card title="Emergency contact">

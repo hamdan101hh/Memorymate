@@ -337,3 +337,60 @@ class TestAlwaysOn:
         r = requests.post(f"{API}/capture/review/{uuid.uuid4()}/action", headers=pt,
                           json={"action": "add_to_vault"}, timeout=15)
         assert r.status_code == 404
+
+
+# ---------------- push notifications ----------------
+class TestNotifications:
+    def test_config_requires_auth(self):
+        r = requests.get(f"{API}/notifications/config", timeout=15)
+        assert r.status_code in (401, 403)
+
+    def test_config_shape(self):
+        pt = _h(_demo("patient")["token"])
+        r = requests.get(f"{API}/notifications/config", headers=pt, timeout=15)
+        assert r.status_code == 200
+        body = r.json()
+        assert "configured" in body and "vapid_public_key" in body
+
+    def test_preferences_defaults_and_update(self):
+        pt = _h(_demo("patient")["token"])
+        prefs = requests.get(f"{API}/notifications/preferences", headers=pt, timeout=15).json()
+        for k in ("patient_reminders", "caregiver_alerts", "daily_summary",
+                  "privacy_review_alerts", "quiet_hours_enabled", "quiet_hours_start"):
+            assert k in prefs
+        updated = requests.patch(f"{API}/notifications/preferences", headers=pt,
+                                 json={"patient_reminders": False, "quiet_hours_enabled": True,
+                                       "quiet_hours_start": "23:00"}, timeout=15).json()
+        assert updated["patient_reminders"] is False
+        assert updated["quiet_hours_enabled"] is True and updated["quiet_hours_start"] == "23:00"
+        # reset so other runs start clean
+        requests.patch(f"{API}/notifications/preferences", headers=pt,
+                       json={"patient_reminders": True, "quiet_hours_enabled": False}, timeout=15)
+
+    def test_subscribe_validates_body(self):
+        pt = _h(_demo("patient")["token"])
+        r = requests.post(f"{API}/notifications/subscribe", headers=pt,
+                          json={"endpoint": "https://example.com/x"}, timeout=15)  # missing keys
+        assert r.status_code == 422
+
+    def test_subscribe_and_unsubscribe(self):
+        pt = _h(_demo("patient")["token"])
+        endpoint = f"https://push.example.com/{uuid.uuid4()}"
+        sub = requests.post(f"{API}/notifications/subscribe", headers=pt, json={
+            "endpoint": endpoint, "keys": {"p256dh": "BdummyKeyValue", "auth": "authValue"},
+            "tz_offset_minutes": 60,
+        }, timeout=15)
+        assert sub.status_code == 200 and sub.json()["ok"] is True
+        prefs = requests.get(f"{API}/notifications/preferences", headers=pt, timeout=15).json()
+        assert prefs["tz_offset_minutes"] == 60
+        un = requests.post(f"{API}/notifications/unsubscribe", headers=pt,
+                           json={"endpoint": endpoint}, timeout=15)
+        assert un.status_code == 200
+
+    def test_cron_requires_secret(self):
+        # With CRON_SECRET set in the env, a missing/wrong secret must be rejected.
+        import os as _os
+        if not _os.environ.get("CRON_SECRET"):
+            pytest.skip("CRON_SECRET not configured in this environment")
+        r = requests.post(f"{API}/notifications/cron/run", timeout=15)
+        assert r.status_code == 403

@@ -18,6 +18,42 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// ---- Web Push: calm, family-friendly notifications ----
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: "MemoryMate", body: event.data ? event.data.text() : "" };
+  }
+  const title = data.title || "MemoryMate";
+  const options = {
+    body: data.body || "",
+    icon: "./icon.svg",
+    badge: "./icon.svg",
+    tag: data.tag || "memorymate",
+    renotify: false,
+    data: { url: data.url || "/", kind: data.kind || "info" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) {
+          client.navigate(target).catch(() => {});
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -33,6 +69,10 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
+
+  // On localhost, don't cache static assets — keeps dev/HMR fresh while push
+  // (which only needs an active SW, not the cache) still works.
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return;
 
   // Static assets: cache-first, then network (and cache the result).
   event.respondWith(

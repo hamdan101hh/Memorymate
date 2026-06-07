@@ -293,13 +293,18 @@ async def cron_due_reminders(request: Request):
     """Hit by a scheduler (e.g. cron-job.org / Render Cron) to push due reminders.
     Protect with header  X-Cron-Secret: <CRON_SECRET>.  Proactive sends use the
     approved template when WHATSAPP_REMINDER_TEMPLATE is set, else a free-form text
-    (which only lands if the user messaged within 24h)."""
+    (which only lands if the user messaged within 24h).
+
+    NOTE: Normal reminders are now delivered via Web Push (see notifications.py).
+    WhatsApp only carries HIGH-priority (important) reminders here, plus caregiver
+    summaries via /send-summary — so users aren't double-notified."""
     if CRON_SECRET and request.headers.get("X-Cron-Secret") != CRON_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden.")
     today = date.today().isoformat()
     sent = 0
     due = await db.reminders.find(
-        {"due_date": today, "status": "pending", "whatsapp_sent": {"$ne": True}}, PROJ).to_list(500)
+        {"due_date": today, "status": "pending", "priority": "high",
+         "whatsapp_sent": {"$ne": True}}, PROJ).to_list(500)
     for r in due:
         targets = await db.whatsapp_links.find(
             {"patient_id": r["patient_id"], "role": "patient"}, PROJ).to_list(20)

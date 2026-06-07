@@ -582,6 +582,14 @@ async def create_alert(body: AlertCreate, user: dict = Depends(get_current_user)
            **body.model_dump(), "status": "open", "created_at": NOW(), "resolved_at": None}
     await db.alerts.insert_one(doc)
     await _log(user["id"], "create_alert", "alert", doc["id"], body.alert_type)
+    try:
+        import notifications
+        await notifications.notify_caregivers(pid, "caregiver_alerts", {
+            "title": "MemoryMate alert", "body": body.message[:160],
+            "url": "/caregiver/alerts", "tag": f"alert-{doc['id']}", "kind": "alert",
+        })
+    except Exception:  # noqa: BLE001 — notifications must never break alert creation
+        pass
     return {k: v for k, v in doc.items() if k != "_id"}
 
 

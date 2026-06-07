@@ -39,6 +39,18 @@ services:
       #   value: gpt-4o-mini
       # - key: DAILY_AI_COST_CAP_USD
       #   value: "0.50"
+      # --- Web Push notifications (VAPID) ---
+      # Generate a keypair locally (see backend/.env.example) and paste both here.
+      # Leave blank to disable push (reminders still show in-app / via WhatsApp).
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:care@memorymate.app
+      # Shared secret protecting the scheduled cron endpoints (notifications + WhatsApp).
+      - key: CRON_SECRET
+        generateValue: true
       # --- optional WhatsApp bot (Meta Cloud API) ---
       # - key: WHATSAPP_VERIFY_TOKEN
       #   sync: false
@@ -50,5 +62,24 @@ services:
       #   sync: false
       # - key: WHATSAPP_REMINDER_TEMPLATE
       #   sync: false
-      # - key: CRON_SECRET
-      #   generateValue: true
+
+# Scheduled push (reminders, daily summary, privacy review, capture status).
+# A cron job calls POST /api/notifications/cron/run with the X-Cron-Secret header.
+# Render Cron Jobs are paid; on the free plan use an external scheduler
+# (e.g. cron-job.org) hitting the same URL every ~10 minutes with the header.
+#  - type: cron
+#    name: memorymate-notify-cron
+#    runtime: python
+#    plan: starter
+#    schedule: "*/10 * * * *"
+#    rootDir: backend
+#    buildCommand: pip install httpx
+#    startCommand: >-
+#      python -c "import os,httpx;
+#      httpx.post(os.environ['API_BASE']+'/api/notifications/cron/run',
+#      headers={'X-Cron-Secret': os.environ['CRON_SECRET']}, timeout=60)"
+#    envVars:
+#      - key: API_BASE
+#        value: https://memorymate-api.onrender.com
+#      - key: CRON_SECRET
+#        sync: false

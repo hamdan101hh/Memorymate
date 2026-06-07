@@ -446,6 +446,16 @@ async def _persist_reviews(pid: str, sid: str, review_items: list, now: str) -> 
         }
         await db.privacy_review_items.insert_one(doc)
         created.append({k: v for k, v in doc.items() if k != "_id"})
+    if created:
+        try:
+            import notifications
+            await notifications.notify_caregivers(pid, "privacy_review_alerts", {
+                "title": "Items to review",
+                "body": f"{len(created)} new item(s) are waiting in Privacy Review.",
+                "url": "/caregiver/capture/review", "tag": "privacy-review", "kind": "privacy_review",
+            })
+        except Exception:  # noqa: BLE001 — never break capture processing
+            pass
     return created
 
 

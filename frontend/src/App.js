@@ -10,6 +10,7 @@ const About = lazy(() => import("./pages/public/About"));
 const Privacy = lazy(() => import("./pages/public/Privacy"));
 const Safety = lazy(() => import("./pages/public/Safety"));
 const HowItWorks = lazy(() => import("./pages/HowItWorks"));
+const NotificationSettings = lazy(() => import("./pages/NotificationSettings"));
 const Login = lazy(() => import("./pages/auth/Login"));
 const Signup = lazy(() => import("./pages/auth/Signup"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -102,6 +103,7 @@ function AppRoutes() {
         <Route path="places" element={<PatientPlaces />} />
         <Route path="emergency" element={<Emergency />} />
         <Route path="settings" element={<PatientSettings />} />
+        <Route path="notifications" element={<NotificationSettings />} />
         <Route path="capture" element={<CaptureStart mode="capture" />} />
         <Route path="meeting" element={<CaptureStart mode="meeting" />} />
         <Route path="capture/always-on" element={<AlwaysOnSetup />} />
@@ -125,6 +127,7 @@ function AppRoutes() {
         <Route path="alerts" element={<Alerts />} />
         <Route path="notes" element={<CaregiverNotes />} />
         <Route path="settings" element={<CgSettings />} />
+        <Route path="notifications" element={<NotificationSettings />} />
         <Route path="capture" element={<CaptureStart mode="capture" />} />
         <Route path="meeting" element={<CaptureStart mode="meeting" />} />
         <Route path="capture/always-on" element={<AlwaysOnSetup />} />
