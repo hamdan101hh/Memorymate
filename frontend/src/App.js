@@ -8,6 +8,10 @@ import { Toaster } from "./components/ui/sonner";
 const Landing = lazy(() => import("./pages/public/Landing"));
 const About = lazy(() => import("./pages/public/About"));
 const Privacy = lazy(() => import("./pages/public/Privacy"));
+const Terms = lazy(() => import("./pages/public/Terms"));
+const Consent = lazy(() => import("./pages/public/Consent"));
+const MedicalDisclaimer = lazy(() => import("./pages/public/MedicalDisclaimer"));
+const DataDeletion = lazy(() => import("./pages/public/DataDeletion"));
 const Safety = lazy(() => import("./pages/public/Safety"));
 const HowItWorks = lazy(() => import("./pages/HowItWorks"));
 const NotificationSettings = lazy(() => import("./pages/NotificationSettings"));
@@ -88,6 +92,10 @@ function AppRoutes() {
       <Route path="/how-it-works" element={<HowItWorks />} />
       <Route path="/about" element={<About />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/consent" element={<Consent />} />
+      <Route path="/medical-disclaimer" element={<MedicalDisclaimer />} />
+      <Route path="/data-deletion" element={<DataDeletion />} />
       <Route path="/safety" element={<Safety />} />
       <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
       <Route path="/signup" element={<GuestOnly><Signup /></GuestOnly>} />

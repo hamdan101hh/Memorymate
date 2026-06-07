@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Logo, Disclaimer } from "../../components/common";
+import { Logo, Disclaimer, LEGAL_LINKS, SUPPORT_EMAIL } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import {
   Mic, Sparkles, Bell, Users, MapPin, ShieldCheck, HeartHandshake,
@@ -175,8 +175,14 @@ export default function Landing() {
               <div className="flex flex-col gap-2">
                 <span className="font-semibold text-stone-800">Company</span>
                 <Link to="/about" className="text-stone-500 hover:text-stone-900">About</Link>
-                <Link to="/privacy" className="text-stone-500 hover:text-stone-900">Privacy</Link>
                 <Link to="/safety" className="text-stone-500 hover:text-stone-900">Safety</Link>
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="text-stone-500 hover:text-stone-900">Contact</a>
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="font-semibold text-stone-800">Legal</span>
+                {LEGAL_LINKS.map((l) => (
+                  <Link key={l.to} to={l.to} className="text-stone-500 hover:text-stone-900">{l.label}</Link>
+                ))}
               </div>
             </div>
           </div>

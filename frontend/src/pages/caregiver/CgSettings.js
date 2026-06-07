@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
-import { Disclaimer } from "../../components/common";
+import { Disclaimer, LEGAL_LINKS } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
-import { ShieldCheck, Save, Loader2 } from "lucide-react";
+import { ShieldCheck, Save, Loader2, ScrollText, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CgSettings() {
@@ -60,6 +60,19 @@ export default function CgSettings() {
             <Button onClick={save} disabled={saving} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="cg-save-patient"><Save className="w-4 h-4 mr-1" /> Save</Button>
           </div>
         )}
+      </div>
+
+      <div className="bg-white border border-stone-200 rounded-xl p-6 mb-5">
+        <h2 className="font-semibold mb-2">Legal &amp; Privacy</h2>
+        <div className="divide-y divide-stone-100">
+          {LEGAL_LINKS.map((l) => (
+            <a key={l.to} href={l.to} target="_blank" rel="noopener noreferrer"
+               className="flex items-center justify-between py-2.5 text-stone-700 hover:text-stone-900" data-testid={`cg-legal-link-${l.to.slice(1)}`}>
+              <span className="flex items-center gap-2"><ScrollText className="w-4 h-4 text-stone-400" /> {l.label}</span>
+              <ChevronRight className="w-4 h-4 text-stone-400" />
+            </a>
+          ))}
+        </div>
       </div>
 
       <div className="bg-white border border-stone-200 rounded-xl p-6">

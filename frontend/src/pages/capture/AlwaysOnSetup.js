@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import api, { formatApiError } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import CaptureConsentModal from "./CaptureConsentModal";
 import {
   Infinity as InfinityIcon, ShieldCheck, Mic, Pencil, Bell, ArrowLeft, ArrowRight,
   Check, Loader2, Pause, Square, Trash2, ClipboardList, Lock,
@@ -66,6 +67,7 @@ export default function AlwaysOnSetup() {
   const [noteStyle, setNoteStyle] = useState("warm");
   const [reminderTone, setReminderTone] = useState("gentle");
   const [starting, setStarting] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
 
   const requestMic = async () => {
     try {
@@ -80,6 +82,7 @@ export default function AlwaysOnSetup() {
   const start = async () => {
     setStarting(true);
     try {
+      setConsentOpen(false);
       await api.post("/capture/always-on/start", {
         duration,
         custom_until: duration === "custom" && customUntil ? new Date(customUntil).toISOString() : null,
@@ -231,11 +234,13 @@ export default function AlwaysOnSetup() {
               <span className="inline-flex items-center gap-1 ml-1"><Trash2 className="w-3.5 h-3.5" />Delete recent</span>, or
               <span className="inline-flex items-center gap-1 ml-1"><ClipboardList className="w-3.5 h-3.5" />Review</span> notes from your home screen.</p>
           </div>
-          <Button onClick={start} disabled={starting} className="w-full h-13 mt-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-base py-6" data-testid="aon-start-btn">
+          <Button onClick={() => setConsentOpen(true)} disabled={starting} className="w-full h-13 mt-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-base py-6" data-testid="aon-start-btn">
             {starting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><InfinityIcon className="w-5 h-5 mr-2" /> Turn on Memory Capture</>}
           </Button>
         </div>
       )}
+
+      <CaptureConsentModal open={consentOpen} onOpenChange={setConsentOpen} onConfirm={start} loading={starting} />
 
       {step < 5 && (
         <div className="mt-7 flex justify-end">

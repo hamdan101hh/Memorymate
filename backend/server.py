@@ -14,6 +14,7 @@ import routes
 import capture
 import whatsapp
 import notifications
+import support
 import seed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -26,6 +27,7 @@ app.include_router(routes.router)
 app.include_router(capture.router)
 app.include_router(whatsapp.router)
 app.include_router(notifications.router)
+app.include_router(support.router)
 
 
 @app.get("/api/")

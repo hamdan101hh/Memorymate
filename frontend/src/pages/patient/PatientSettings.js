@@ -3,11 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
 import { PatientPageHeader } from "./PatientLayout";
-import { Disclaimer } from "../../components/common";
+import { Disclaimer, LEGAL_LINKS } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
-import { Type, Contrast, Phone, LogOut, ShieldCheck, Loader2, Bell, ChevronRight } from "lucide-react";
+import { Type, Contrast, Phone, LogOut, ShieldCheck, Loader2, Bell, ChevronRight, ScrollText } from "lucide-react";
 import { toast } from "sonner";
 
 export default function PatientSettings() {
@@ -59,6 +59,18 @@ export default function PatientSettings() {
             <Button onClick={saveEc} disabled={saving} className="rounded-xl bg-sky-600 hover:bg-sky-700"><Phone className="w-4 h-4 mr-1" /> Save contact</Button>
           </div>
         )}
+      </Card>
+
+      <Card title="Legal & Privacy">
+        <div className="space-y-1">
+          {LEGAL_LINKS.map((l) => (
+            <a key={l.to} href={l.to} target="_blank" rel="noopener noreferrer"
+               className="flex items-center justify-between py-2 text-left" data-testid={`legal-link-${l.to.slice(1)}`}>
+              <span className="flex items-center gap-3 text-lg"><ScrollText className="w-6 h-6 text-stone-500" /> {l.label}</span>
+              <ChevronRight className="w-5 h-5 text-stone-400" />
+            </a>
+          ))}
+        </div>
       </Card>
 
       <Card title="Safety">

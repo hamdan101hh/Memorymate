@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Logo, Disclaimer } from "../components/common";
+import { Logo, Disclaimer, LegalLinks } from "../components/common";
 import { Button } from "../components/ui/button";
 import {
   Mic, Keyboard, StickyNote, CalendarClock, MessageSquare, Smartphone, Filter,
@@ -590,9 +590,10 @@ export default function HowItWorks() {
         <div className="max-w-6xl mx-auto px-5 py-10">
           <Logo />
           <div className="mt-4 rounded-2xl bg-stone-50 border border-stone-200 p-4 space-y-1.5">
-            <p className="text-sm font-medium text-stone-700">MemoryMate is a daily-life memory support tool. It is not a medical diagnosis or treatment tool.</p>
+            <p className="text-sm font-medium text-stone-700">MemoryMate is a daily-life memory support and caregiver coordination tool. It is not a medical diagnosis, treatment, or emergency service. Memory Capture is consent-based and can be paused or stopped at any time.</p>
             <p className="text-sm text-stone-600">Everyone involved in conversations should be aware when capture is on.</p>
           </div>
+          <div className="mt-4"><LegalLinks /></div>
           <div className="mt-4"><Disclaimer /></div>
           <p className="mt-3 text-xs text-stone-400">© {new Date().getFullYear()} MemoryMate. All rights reserved.</p>
         </div>
