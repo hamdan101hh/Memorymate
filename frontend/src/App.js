@@ -23,6 +23,7 @@ const PatientMemoryBook = lazy(() => import("./pages/patient/PatientMemoryBook")
 const CgMemoryBook = lazy(() => import("./pages/caregiver/CgMemoryBook"));
 const CgFamily = lazy(() => import("./pages/caregiver/CgFamily"));
 const CgWhatsApp = lazy(() => import("./pages/caregiver/CgWhatsApp"));
+const CalendarConnector = lazy(() => import("./pages/caregiver/CalendarConnector"));
 
 const PatientLayout = lazy(() => import("./pages/patient/PatientLayout"));
 const PatientHome = lazy(() => import("./pages/patient/PatientHome"));
@@ -148,6 +149,7 @@ function AppRoutes() {
         <Route path="memory-book" element={<CgMemoryBook />} />
         <Route path="family" element={<CgFamily />} />
         <Route path="whatsapp" element={<CgWhatsApp />} />
+        <Route path="calendar" element={<CalendarConnector />} />
       </Route>
 
       <Route path="/admin" element={<Protected roles={["admin"]}><AdminLayout /></Protected>}>

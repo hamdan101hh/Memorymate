@@ -2,7 +2,7 @@ import { Outlet } from "react-router-dom";
 import DashboardShell from "../../components/DashboardShell";
 import {
   LayoutDashboard, UserRound, Clock, Bell, Pill, CalendarClock,
-  Users, MapPin, AlertTriangle, StickyNote, Settings, Radio, ShieldQuestion, Share2, BookHeart, HeartHandshake, MessageSquare, HelpCircle, BellRing,
+  Users, MapPin, AlertTriangle, StickyNote, Settings, Radio, ShieldQuestion, Share2, BookHeart, HeartHandshake, MessageSquare, HelpCircle, BellRing, CalendarDays,
 } from "lucide-react";
 
 const ITEMS = [
@@ -12,6 +12,7 @@ const ITEMS = [
   { to: "/caregiver/reminders", label: "Reminders", icon: Bell },
   { to: "/caregiver/medication", label: "Medication", icon: Pill },
   { to: "/caregiver/appointments", label: "Appointments", icon: CalendarClock },
+  { to: "/caregiver/calendar", label: "Google Calendar", icon: CalendarDays },
   { to: "/caregiver/people", label: "Important People", icon: Users },
   { to: "/caregiver/family", label: "Family Circle", icon: HeartHandshake },
   { to: "/caregiver/places", label: "Important Places", icon: MapPin },
