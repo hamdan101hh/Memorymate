@@ -17,7 +17,7 @@ function Nav() {
       <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
         <Logo />
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600">
-          <a href="#how" className="hover:text-stone-900 transition-colors">How it works</a>
+          <Link to="/how-it-works" className="hover:text-stone-900 transition-colors">How it works</Link>
           <a href="#features" className="hover:text-stone-900 transition-colors">Features</a>
           <a href="#safety" className="hover:text-stone-900 transition-colors">Safety</a>
           <Link to="/about" className="hover:text-stone-900 transition-colors">About</Link>
@@ -170,7 +170,7 @@ export default function Landing() {
               <div className="flex flex-col gap-2">
                 <span className="font-semibold text-stone-800">Product</span>
                 <a href="#features" className="text-stone-500 hover:text-stone-900">Features</a>
-                <a href="#how" className="text-stone-500 hover:text-stone-900">How it works</a>
+                <Link to="/how-it-works" className="text-stone-500 hover:text-stone-900">How it works</Link>
               </div>
               <div className="flex flex-col gap-2">
                 <span className="font-semibold text-stone-800">Company</span>

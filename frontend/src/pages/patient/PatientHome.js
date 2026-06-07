@@ -230,6 +230,7 @@ function CaptureSection() {
         <Link to="capture/vault" className="text-sky-700 font-medium" data-testid="link-private-vault">Private Vault</Link>
         <Link to="share" className="text-sky-700 font-medium" data-testid="link-share">Share &amp; export</Link>
         <Link to="capture/settings" className="text-sky-700 font-medium" data-testid="link-capture-settings">Capture settings</Link>
+        <Link to="/how-it-works" className="text-sky-700 font-medium" data-testid="link-how-it-works">How it works</Link>
       </div>
     </div>
   );
