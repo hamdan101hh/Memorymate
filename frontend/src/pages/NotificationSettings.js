@@ -12,9 +12,18 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
   Bell, BellRing, BellOff, ArrowLeft, Loader2, Send, ShieldCheck, Moon,
-  AlarmClock, AlertTriangle, CalendarCheck, ShieldQuestion, Radio, Info, MessageCircle,
+  AlarmClock, AlertTriangle, CalendarCheck, ShieldQuestion, Radio, Info, MessageCircle, Globe,
 } from "lucide-react";
 import { toast } from "sonner";
+
+// A short, friendly list of common zones; the patient's current value is always
+// shown even if it's not in this list.
+const COMMON_TIMEZONES = [
+  "UTC", "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Moscow",
+  "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Singapore", "Asia/Tokyo",
+  "Australia/Sydney", "America/New_York", "America/Chicago", "America/Denver",
+  "America/Los_Angeles", "America/Sao_Paulo",
+];
 
 export default function NotificationSettings() {
   const { user } = useAuth();
@@ -25,6 +34,7 @@ export default function NotificationSettings() {
   const [prefs, setPrefs] = useState(null);
   const [config, setConfig] = useState({ configured: false });
   const [tone, setTone] = useState("gentle");
+  const [timezone, setTimezone] = useState("");
   const [subscribed, setSubscribed] = useState(false);
   const [perm, setPerm] = useState(permissionState());
   const [busy, setBusy] = useState(false);
@@ -33,14 +43,16 @@ export default function NotificationSettings() {
 
   const load = useCallback(async () => {
     try {
-      const [{ data: cfg }, { data: p }, { data: cap }] = await Promise.all([
+      const [{ data: cfg }, { data: p }, { data: cap }, { data: patient }] = await Promise.all([
         api.get("/notifications/config"),
         api.get("/notifications/preferences"),
         api.get("/capture/settings"),
+        api.get("/patient").catch(() => ({ data: {} })),
       ]);
       setConfig(cfg);
       setPrefs(p);
       setTone(cap?.reminder_tone || "gentle");
+      setTimezone(patient?.timezone || "");
     } catch (e) {
       toast.error("Could not load notification settings");
     }
@@ -60,6 +72,15 @@ export default function NotificationSettings() {
     try { await api.patch("/capture/settings", { reminder_tone: v }); }
     catch { toast.error("Could not save"); load(); }
   };
+
+  const updateTimezone = async (v) => {
+    setTimezone(v);
+    try { await api.patch("/patient", { timezone: v }); toast.success("Timezone saved"); }
+    catch { toast.error("Could not save"); load(); }
+  };
+
+  const tzGuess = (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
+  const tzOptions = Array.from(new Set([...COMMON_TIMEZONES, tzGuess, timezone].filter(Boolean)));
 
   const onEnable = async () => {
     setBusy(true);
@@ -176,6 +197,18 @@ export default function NotificationSettings() {
               <SelectItem value="gentle">Gentle</SelectItem>
               <SelectItem value="direct">Direct</SelectItem>
               <SelectItem value="family">Family tone</SelectItem>
+            </SelectContent>
+          </Select>
+        </Row>
+      </Card>
+
+      {/* Timezone */}
+      <Card title="Timezone">
+        <Row icon={Globe} label="Time zone for reminders & calendar" help="Used for reminder timing and when adding events to Google Calendar.">
+          <Select value={timezone || tzGuess} onValueChange={updateTimezone}>
+            <SelectTrigger className="w-52 rounded-xl" data-testid="pref-timezone"><SelectValue placeholder="Select timezone" /></SelectTrigger>
+            <SelectContent className="max-h-72">
+              {tzOptions.map((tz) => <SelectItem key={tz} value={tz}>{tz}</SelectItem>)}
             </SelectContent>
           </Select>
         </Row>
