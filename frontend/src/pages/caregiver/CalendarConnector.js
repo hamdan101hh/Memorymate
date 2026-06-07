@@ -8,9 +8,21 @@ import {
 } from "../../components/ui/dialog";
 import {
   CalendarDays, CheckCircle2, AlertTriangle, Loader2, Link2, Unlink,
-  CalendarPlus, Download, MapPin, RefreshCw, ShieldCheck,
+  CalendarPlus, Download, MapPin, RefreshCw, ShieldCheck, History, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
+
+const ACTIVITY_LABELS = {
+  connected: { label: "Connected Google Calendar", icon: Link2, color: "text-emerald-600" },
+  disconnected: { label: "Disconnected Google Calendar", icon: Unlink, color: "text-stone-500" },
+  imported: { label: "Imported event into MemoryMate", icon: Download, color: "text-sky-600" },
+  added: { label: "Added appointment to Google Calendar", icon: CalendarPlus, color: "text-sky-600" },
+  reconnect_needed: { label: "Reconnect needed (access expired)", icon: AlertTriangle, color: "text-amber-600" },
+};
+function fmtActivityTime(s) {
+  try { return new Date(s).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+  catch { return s; }
+}
 
 function fmtWhen(s, allDay) {
   if (!s) return "";
@@ -38,6 +50,7 @@ export default function CalendarConnector() {
   const [status, setStatus] = useState(null);
   const [suggestions, setSuggestions] = useState(null);
   const [appointments, setAppointments] = useState([]);
+  const [activity, setActivity] = useState([]);
   const [busy, setBusy] = useState("");
   const [confirm, setConfirm] = useState(null); // appointment pending "add to calendar" approval
 
@@ -47,6 +60,7 @@ export default function CalendarConnector() {
   const loadData = useCallback(() => {
     api.get("/calendar/suggestions").then(({ data }) => setSuggestions(data)).catch(() => setSuggestions([]));
     api.get("/appointments").then(({ data }) => setAppointments(data || [])).catch(() => setAppointments([]));
+    api.get("/calendar/activity").then(({ data }) => setActivity(data || [])).catch(() => setActivity([]));
   }, []);
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
@@ -150,9 +164,16 @@ export default function CalendarConnector() {
           <p className="text-stone-600 text-sm max-w-md mx-auto mt-1 mb-4">
             You'll be asked to sign in with Google and grant calendar access. You can disconnect anytime.
           </p>
-          <Button onClick={connect} disabled={busy === "connect"} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="cal-connect-btn">
-            {busy === "connect" ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Link2 className="w-4 h-4 mr-1" /> Connect Google Calendar</>}
-          </Button>
+          {status.secure_storage === false ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 max-w-md mx-auto flex items-start gap-2" data-testid="cal-no-secure-storage">
+              <Lock className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>Secure token storage isn't configured on this server yet (<code>TOKEN_ENCRYPTION_KEY</code>). Connecting is disabled until it's set.</span>
+            </div>
+          ) : (
+            <Button onClick={connect} disabled={busy === "connect"} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="cal-connect-btn">
+              {busy === "connect" ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Link2 className="w-4 h-4 mr-1" /> Connect Google Calendar</>}
+            </Button>
+          )}
         </div>
       )}
 
@@ -218,6 +239,32 @@ export default function CalendarConnector() {
                   </div>
                 ))}
               </div>
+            )}
+          </section>
+
+          {/* Recent calendar activity (privacy-safe history) */}
+          <section className="mt-8">
+            <h2 className="font-heading text-lg font-semibold mb-1 flex items-center gap-2"><History className="w-5 h-5 text-sky-600" /> Recent Calendar Activity</h2>
+            <p className="text-sm text-stone-500 mb-3">A simple history of calendar connections, imports, and additions. No private event details are stored here.</p>
+            {activity.length === 0 ? (
+              <p className="text-sm text-stone-400" data-testid="cal-no-activity">No calendar activity yet.</p>
+            ) : (
+              <ul className="bg-white border border-stone-200 rounded-xl divide-y divide-stone-100" data-testid="cal-activity-list">
+                {activity.map((a) => {
+                  const meta = ACTIVITY_LABELS[a.kind] || { label: a.kind, icon: History, color: "text-stone-500" };
+                  const Icon = meta.icon;
+                  return (
+                    <li key={a.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      <Icon className={`w-4 h-4 shrink-0 ${meta.color}`} />
+                      <span className="flex-1 min-w-0">
+                        <span className="text-stone-700">{meta.label}</span>
+                        {a.detail && <span className="text-stone-400"> · {a.detail}</span>}
+                      </span>
+                      <span className="text-xs text-stone-400 shrink-0">{fmtActivityTime(a.created_at)}</span>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
         </>

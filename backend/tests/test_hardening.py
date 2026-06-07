@@ -420,6 +420,25 @@ class TestCalendar:
         assert r.status_code == 200
         body = r.json()
         assert "configured" in body and "connected" in body
+        assert "secure_storage" in body
+
+    def test_status_never_returns_raw_tokens(self):
+        token = _demo("caregiver")["token"]
+        r = requests.get(f"{API}/calendar/status", headers=_h(token), timeout=15)
+        body = r.json()
+        for leak in ("access_token", "refresh_token", "id_token"):
+            assert leak not in body
+
+    def test_activity_requires_caregiver(self):
+        token = _demo("patient")["token"]
+        r = requests.get(f"{API}/calendar/activity", headers=_h(token), timeout=15)
+        assert r.status_code == 403
+
+    def test_activity_shape(self):
+        token = _demo("caregiver")["token"]
+        r = requests.get(f"{API}/calendar/activity", headers=_h(token), timeout=15)
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)  # privacy-safe history, possibly empty
 
     def test_events_require_connection(self):
         # No calendar linked in tests -> 409 (or 503 if connector disabled).

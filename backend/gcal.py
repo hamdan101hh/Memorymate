@@ -18,15 +18,18 @@ Env:
                         http://localhost:8000/api/calendar/callback
   FRONTEND_URL          where to send the user back after consent
                         (default http://localhost:3000)
-  CAL_TIMEZONE          IANA tz used when creating timed events (default UTC)
+  CAL_TIMEZONE          fallback IANA tz when a patient has no timezone set
+  TOKEN_ENCRYPTION_KEY  key used to encrypt OAuth tokens at rest (see crypto.py)
 
-SECURITY NOTE: OAuth tokens are stored in MongoDB. For production they should be
-encrypted at rest (e.g. KMS/Fernet). Kept plaintext here for clarity.
+SECURITY: OAuth access/refresh tokens are encrypted at rest via crypto.py before
+they touch MongoDB and decrypted only when calling Google. Raw tokens are never
+returned to the frontend (/status exposes only the connected email).
 """
 import os
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 import jwt
 import httpx
@@ -37,6 +40,7 @@ from pydantic import BaseModel
 from db import db
 from auth import get_current_user, require_role, _secret, _log
 from routes import patient_id_for
+import crypto
 
 logger = logging.getLogger("memorymate.gcal")
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -58,9 +62,41 @@ USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 
 
+SENSITIVE = ("access_token", "refresh_token", "id_token")
+
+
 # ---------------- token helpers ----------------
 async def _link_for(pid: str) -> dict | None:
     return await db.calendar_links.find_one({"patient_id": pid}, PROJ)
+
+
+async def _activity(pid: str, user_id: str, kind: str, detail: str = "") -> None:
+    """Caregiver-visible calendar history (privacy-safe: titles/email only, no tokens)."""
+    await db.calendar_activity.insert_one({
+        "id": str(uuid.uuid4()), "patient_id": pid, "user_id": user_id,
+        "kind": kind, "detail": detail, "created_at": NOW(),
+    })
+
+
+def _resolve_tz_value(tz: str | None) -> str:
+    """Validate an IANA tz name, falling back CAL_TIMEZONE -> UTC."""
+    for candidate in (tz, CAL_TIMEZONE, "UTC"):
+        if not candidate:
+            continue
+        try:
+            ZoneInfo(candidate)
+            return candidate
+        except Exception:  # noqa: BLE001
+            continue
+    return "UTC"
+
+
+async def _resolve_tz(pid: str, user: dict | None = None) -> str:
+    """Timezone order: acting user -> patient profile -> CAL_TIMEZONE -> UTC."""
+    if user and user.get("timezone"):
+        return _resolve_tz_value(user.get("timezone"))
+    patient = await db.patients.find_one({"id": pid}, {"_id": 0, "timezone": 1})
+    return _resolve_tz_value((patient or {}).get("timezone"))
 
 
 async def _exchange_code(code: str) -> dict:
@@ -77,15 +113,20 @@ async def _exchange_code(code: str) -> dict:
 
 
 async def _refresh(link: dict) -> str:
-    """Return a valid access token, refreshing if needed. Drops the link if revoked."""
+    """Return a valid (decrypted) access token, refreshing if needed.
+
+    Tokens are stored encrypted; we decrypt only here, just before calling Google.
+    If the refresh is rejected (revoked grant) the link is dropped and a
+    'reconnect needed' activity entry is recorded.
+    """
     expiry = link.get("token_expiry")
     if link.get("access_token") and expiry:
         try:
             if datetime.fromisoformat(expiry) - datetime.now(timezone.utc) > timedelta(seconds=60):
-                return link["access_token"]
+                return crypto.decrypt(link["access_token"])
         except ValueError:
             pass
-    rt = link.get("refresh_token")
+    rt = crypto.decrypt(link.get("refresh_token"))
     if not rt:
         raise HTTPException(status_code=401, detail="Calendar needs to be reconnected.")
     data = {
@@ -96,12 +137,14 @@ async def _refresh(link: dict) -> str:
         r = await c.post(TOKEN_URL, data=data)
     if r.status_code >= 400:
         await db.calendar_links.delete_one({"patient_id": link["patient_id"]})
+        await _activity(link["patient_id"], link.get("user_id", ""), "reconnect_needed")
         raise HTTPException(status_code=401, detail="Calendar access expired. Please reconnect.")
     tok = r.json()
     new_expiry = (datetime.now(timezone.utc) + timedelta(seconds=tok.get("expires_in", 3600))).isoformat()
     await db.calendar_links.update_one(
         {"patient_id": link["patient_id"]},
-        {"$set": {"access_token": tok["access_token"], "token_expiry": new_expiry, "updated_at": NOW()}},
+        {"$set": {"access_token": crypto.encrypt(tok["access_token"]),
+                  "token_expiry": new_expiry, "updated_at": NOW()}},
     )
     return tok["access_token"]
 
@@ -160,6 +203,7 @@ async def status(user: dict = Depends(require_role("caregiver", "admin"))):
         "configured": CONFIGURED,
         "connected": bool(link),
         "email": link.get("email") if link else None,
+        "secure_storage": crypto.encryption_available(),
     }
 
 
@@ -167,6 +211,9 @@ async def status(user: dict = Depends(require_role("caregiver", "admin"))):
 async def connect(user: dict = Depends(require_role("caregiver", "admin"))):
     if not CONFIGURED:
         raise HTTPException(status_code=503, detail="Calendar connector is not configured on the server.")
+    if not crypto.encryption_available():
+        # Fail safe: never store OAuth tokens unencrypted in production.
+        raise HTTPException(status_code=503, detail="Secure token storage is not configured (TOKEN_ENCRYPTION_KEY).")
     state = jwt.encode(
         {"sub": user["id"], "exp": datetime.now(timezone.utc) + timedelta(minutes=15), "typ": "gcal_state"},
         _secret(), algorithm="HS256",
@@ -199,23 +246,31 @@ async def callback(request: Request):
     except Exception:  # noqa: BLE001
         return RedirectResponse(f"{FRONTEND_URL}/caregiver/calendar?calendar=error")
 
+    if not crypto.encryption_available():
+        logger.error("calendar callback blocked: TOKEN_ENCRYPTION_KEY missing in production")
+        return RedirectResponse(f"{FRONTEND_URL}/caregiver/calendar?calendar=error")
     try:
         tok = await _exchange_code(code)
         access = tok["access_token"]
         async with httpx.AsyncClient(timeout=20) as c:
             info = (await c.get(USERINFO_URL, headers={"Authorization": f"Bearer {access}"})).json()
         expiry = (datetime.now(timezone.utc) + timedelta(seconds=tok.get("expires_in", 3600))).isoformat()
+        email = info.get("email", "")
+        # Encrypt every sensitive token field before it touches the database.
         doc = {
-            "patient_id": pid, "user_id": user["id"], "email": info.get("email", ""),
-            "access_token": access, "token_expiry": expiry, "scope": tok.get("scope", SCOPES),
-            "updated_at": NOW(),
+            "patient_id": pid, "user_id": user["id"], "email": email,
+            "access_token": crypto.encrypt(access), "token_expiry": expiry,
+            "scope": tok.get("scope", SCOPES), "updated_at": NOW(),
         }
+        if tok.get("id_token"):
+            doc["id_token"] = crypto.encrypt(tok["id_token"])
         # Keep the existing refresh_token if Google didn't send a new one.
         if tok.get("refresh_token"):
-            doc["refresh_token"] = tok["refresh_token"]
+            doc["refresh_token"] = crypto.encrypt(tok["refresh_token"])
         await db.calendar_links.update_one(
             {"patient_id": pid}, {"$set": doc, "$setOnInsert": {"created_at": NOW()}}, upsert=True)
-        await _log(user["id"], "calendar_connect", "calendar_link", pid, doc["email"])
+        await _log(user["id"], "calendar_connect", "calendar_link", pid, email)
+        await _activity(pid, user["id"], "connected", email)
     except HTTPException:
         return RedirectResponse(f"{FRONTEND_URL}/caregiver/calendar?calendar=error")
     return RedirectResponse(f"{FRONTEND_URL}/caregiver/calendar?calendar=connected")
@@ -226,7 +281,17 @@ async def disconnect(user: dict = Depends(require_role("caregiver", "admin"))):
     pid = await patient_id_for(user)
     await db.calendar_links.delete_one({"patient_id": pid})
     await _log(user["id"], "calendar_disconnect", "calendar_link", pid)
+    await _activity(pid, user["id"], "disconnected")
     return {"ok": True}
+
+
+@router.get("/activity")
+async def activity(limit: int = 20, user: dict = Depends(require_role("caregiver", "admin"))):
+    """Recent, privacy-safe calendar history for this patient (no tokens)."""
+    pid = await patient_id_for(user)
+    limit = max(1, min(limit, 50))
+    rows = await db.calendar_activity.find({"patient_id": pid}, PROJ).sort("created_at", -1).to_list(limit)
+    return rows
 
 
 # ---------------- read (with permission) ----------------
@@ -299,6 +364,7 @@ async def import_event(body: ImportBody, user: dict = Depends(require_role("care
             "status": "pending", "source": "google_calendar", "created_at": NOW(), "completed_at": None,
         })
     await _log(user["id"], "calendar_import", "appointment", appt["id"], body.google_event_id)
+    await _activity(pid, user["id"], "imported", appt["title"])
     return {k: v for k, v in appt.items() if k != "_id"}
 
 
@@ -332,6 +398,7 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
 
     link = await _connected_link(user)
     token = await _refresh(link)
+    tz = await _resolve_tz(pid, user)
     if time:
         start_dt = f"{date}T{time}:00"
         try:
@@ -339,8 +406,8 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
         except ValueError:
             end_dt = start_dt
         event = {"summary": title, "location": location, "description": notes or "Added by MemoryMate",
-                 "start": {"dateTime": start_dt, "timeZone": CAL_TIMEZONE},
-                 "end": {"dateTime": end_dt, "timeZone": CAL_TIMEZONE}}
+                 "start": {"dateTime": start_dt, "timeZone": tz},
+                 "end": {"dateTime": end_dt, "timeZone": tz}}
     else:
         event = {"summary": title, "location": location, "description": notes or "Added by MemoryMate",
                  "start": {"date": date}, "end": {"date": date}}
@@ -355,4 +422,5 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
         await db.appointments.update_one(
             {"id": appt["id"]}, {"$set": {"google_event_id": created.get("id")}})
     await _log(user["id"], "calendar_add_event", "appointment", appt["id"] if appt else "", created.get("id", ""))
+    await _activity(pid, user["id"], "added", title)
     return {"ok": True, "google_event_id": created.get("id"), "html_link": created.get("htmlLink", "")}

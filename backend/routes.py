@@ -64,6 +64,7 @@ class PatientUpdate(BaseModel):
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     notes: Optional[str] = None
+    timezone: Optional[str] = None  # IANA tz, used for calendar events & reminders
 
 
 @router.patch("/patient")

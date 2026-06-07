@@ -73,6 +73,9 @@ services:
       #   value: https://your-frontend.vercel.app
       # - key: CAL_TIMEZONE
       #   value: UTC
+      # Encrypts Google OAuth tokens at rest. REQUIRED once the connector is enabled.
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
 
 # Scheduled push (reminders, daily summary, privacy review, capture status).
 # A cron job calls POST /api/notifications/cron/run with the X-Cron-Secret header.
