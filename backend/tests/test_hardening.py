@@ -394,3 +394,14 @@ class TestNotifications:
             pytest.skip("CRON_SECRET not configured in this environment")
         r = requests.post(f"{API}/notifications/cron/run", timeout=15)
         assert r.status_code == 403
+
+    def test_cron_output_keys(self):
+        # Best-effort: when the dev secret matches, the cron returns all job counters.
+        r = requests.post(f"{API}/notifications/cron/run",
+                          headers={"X-Cron-Secret": "dev-cron-secret"}, timeout=30)
+        if r.status_code != 200:
+            pytest.skip("cron secret differs in this environment")
+        body = r.json()
+        for k in ("reminders", "appointments", "daily_checkin", "missed",
+                  "daily_summary", "privacy_review", "capture_status"):
+            assert k in body

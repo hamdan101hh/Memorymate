@@ -9,9 +9,10 @@ import { Disclaimer } from "../components/common";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
 import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
   Bell, BellRing, BellOff, ArrowLeft, Loader2, Send, ShieldCheck, Moon,
-  AlarmClock, AlertTriangle, CalendarCheck, ShieldQuestion, Radio, Info,
+  AlarmClock, AlertTriangle, CalendarCheck, ShieldQuestion, Radio, Info, MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +24,7 @@ export default function NotificationSettings() {
 
   const [prefs, setPrefs] = useState(null);
   const [config, setConfig] = useState({ configured: false });
+  const [tone, setTone] = useState("gentle");
   const [subscribed, setSubscribed] = useState(false);
   const [perm, setPerm] = useState(permissionState());
   const [busy, setBusy] = useState(false);
@@ -31,12 +33,14 @@ export default function NotificationSettings() {
 
   const load = useCallback(async () => {
     try {
-      const [{ data: cfg }, { data: p }] = await Promise.all([
+      const [{ data: cfg }, { data: p }, { data: cap }] = await Promise.all([
         api.get("/notifications/config"),
         api.get("/notifications/preferences"),
+        api.get("/capture/settings"),
       ]);
       setConfig(cfg);
       setPrefs(p);
+      setTone(cap?.reminder_tone || "gentle");
     } catch (e) {
       toast.error("Could not load notification settings");
     }
@@ -48,6 +52,12 @@ export default function NotificationSettings() {
   const update = async (patch) => {
     setPrefs((cur) => ({ ...cur, ...patch }));
     try { await api.patch("/notifications/preferences", patch); }
+    catch { toast.error("Could not save"); load(); }
+  };
+
+  const updateTone = async (v) => {
+    setTone(v);
+    try { await api.patch("/capture/settings", { reminder_tone: v }); }
     catch { toast.error("Could not save"); load(); }
   };
 
@@ -155,6 +165,20 @@ export default function NotificationSettings() {
             <Switch checked={!!prefs[key]} onCheckedChange={(v) => update({ [key]: v })} data-testid={`pref-${key}`} />
           </Row>
         ))}
+      </Card>
+
+      {/* Reminder tone */}
+      <Card title="Reminder tone">
+        <Row icon={MessageCircle} label="How reminders are worded" help="Sets the wording used in reminders across the app.">
+          <Select value={tone} onValueChange={updateTone}>
+            <SelectTrigger className="w-40 rounded-xl" data-testid="pref-reminder-tone"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gentle">Gentle</SelectItem>
+              <SelectItem value="direct">Direct</SelectItem>
+              <SelectItem value="family">Family tone</SelectItem>
+            </SelectContent>
+          </Select>
+        </Row>
       </Card>
 
       {/* Quiet hours */}

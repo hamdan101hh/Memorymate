@@ -5,6 +5,7 @@ import api from "../../lib/api";
 import { logError } from "../../lib/logger";
 import { Switch } from "../../components/ui/switch";
 import { Button } from "../../components/ui/button";
+import NotificationPermissionPrompt from "../../components/NotificationPermissionPrompt";
 import {
   Mic, MessageCircleHeart, Sun, Bell, Users, Phone, Radio, Video, EyeOff, BookHeart,
   Infinity as InfinityIcon, Pause, Play, Square, Trash2, ClipboardList, Clock,
@@ -62,6 +63,10 @@ export default function PatientHome() {
         <p className="mt-4 text-sky-50 text-lg leading-relaxed">
           You are safe. Your reminders and memories are here. 💙
         </p>
+      </div>
+
+      <div className="mt-6">
+        <NotificationPermissionPrompt settingsPath="/patient/notifications" />
       </div>
 
       <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-5">

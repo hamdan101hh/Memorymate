@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../lib/api";
 import { Button } from "../../components/ui/button";
+import NotificationPermissionPrompt from "../../components/NotificationPermissionPrompt";
 import {
   UserRound, CheckCircle2, AlertTriangle, Bell, Pill, CalendarClock,
   Sparkles, Loader2, Clock, StickyNote, ArrowRight, Radio, Video, ShieldQuestion,
@@ -52,6 +53,8 @@ export default function CaregiverDashboard() {
           {gen ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />} Generate Caregiver Summary
         </Button>
       </div>
+
+      <NotificationPermissionPrompt settingsPath="/caregiver/notifications" />
 
       {summary && (
         <div className="mb-6 rounded-xl bg-sky-50 border border-sky-200 p-5" data-testid="ai-summary-card">

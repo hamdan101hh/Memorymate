@@ -220,6 +220,9 @@ async def always_on_pause(body: PauseBody, user: dict = Depends(get_current_user
     await get_settings_doc(pid)
     await db.audio_settings.update_one({"patient_id": pid}, {"$set": {"capture_paused": body.paused}})
     await _log(user["id"], "always_on_pause", "audio_settings", pid, f"paused={body.paused}")
+    # Let caregivers know if the PATIENT changed capture state (it's relevant to them).
+    if user["role"] == "patient":
+        await _notify_caregivers_capture(pid, "paused" if body.paused else "resumed")
     return await _build_status(pid)
 
 
@@ -237,7 +240,26 @@ async def always_on_stop(user: dict = Depends(get_current_user)):
         "text": "Always-On memory capture stopped by the user.", "created_at": NOW(),
     })
     await _log(user["id"], "always_on_stop", "audio_settings", pid, "")
+    if user["role"] == "patient":
+        await _notify_caregivers_capture(pid, "stopped")
     return await _build_status(pid)
+
+
+async def _notify_caregivers_capture(pid: str, state: str) -> None:
+    """Best-effort caregiver push when the patient pauses/stops/resumes capture."""
+    bodies = {
+        "paused": "Memory Capture was paused.",
+        "resumed": "Memory Capture was resumed.",
+        "stopped": "Memory Capture was turned off.",
+    }
+    try:
+        import notifications
+        await notifications.notify_caregivers(pid, "caregiver_alerts", {
+            "title": "Capture status update", "body": bodies.get(state, "Memory Capture status changed."),
+            "url": "/caregiver", "tag": "capture-state", "kind": "capture_state",
+        })
+    except Exception:  # noqa: BLE001 — never break the capture control flow
+        pass
 
 
 @router.delete("/recent")
