@@ -11,7 +11,7 @@ import {
 } from "../../components/ui/dialog";
 import {
   Sparkles, Mic, MicOff, Loader2, AlertTriangle, ShieldCheck, CalendarPlus, Save, Bell, Clock,
-  MapPin, Navigation, X,
+  MapPin, Navigation, X, Video, Users, Share2, Copy, Mail, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -132,6 +132,36 @@ function openExternal(url) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function buildShareMessage(fields, result, reminderPreset) {
+  const lines = [`MemoryMate calendar event: ${fields.title}`];
+  lines.push(`Date: ${formatDateDisplay(fields.date)}`);
+  if (fields.all_day) {
+    lines.push("Time: All day");
+  } else {
+    lines.push(`Time: ${formatTimeDisplay(fields.time)}–${formatTimeDisplay(fields.end_time)}`);
+  }
+  if (fields.location?.trim()) lines.push(`Location: ${fields.location}`);
+  if (result?.meeting_link) lines.push(`Meeting link: ${result.meeting_link}`);
+  if (result?.html_link) lines.push(`Calendar link: ${result.html_link}`);
+  const rem = reminderDisplay(fields.reminder, reminderPreset);
+  if (rem !== "No reminder") lines.push(`Reminder: ${rem}`);
+  return lines.join("\n");
+}
+
+function whatsappShareUrl(text) {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+function emailShareUrl(subject, body) {
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+async function copyText(text) {
+  await navigator.clipboard.writeText(text);
+}
+
 function LocationNavLinks({ location, className = "" }) {
   if (!location?.trim()) return null;
   return (
@@ -174,6 +204,10 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
   const [busy, setBusy] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [addError, setAddError] = useState("");
+  const [onlineMeeting, setOnlineMeeting] = useState(false);
+  const [attendees, setAttendees] = useState([]);
+  const [attendeeInput, setAttendeeInput] = useState("");
+  const [successResult, setSuccessResult] = useState(null);
 
   const appendSpeech = useCallback((text) => {
     setRawText((t) => `${t}${text}`.trim());
@@ -260,9 +294,38 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
     setMeta({ confidence: "", missing_fields: [], warnings: [], ai_used: true });
     setAddError("");
     setConfirmOpen(false);
+    setOnlineMeeting(false);
+    setAttendees([]);
+    setAttendeeInput("");
+    setSuccessResult(null);
     setRawText("");
     stop();
   };
+
+  const addAttendee = () => {
+    const email = attendeeInput.trim().toLowerCase();
+    if (!email) {
+      toast.error("Please enter an email address");
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    if (attendees.includes(email)) {
+      toast.error("This email is already on the invite list");
+      return;
+    }
+    setAttendees((a) => [...a, email]);
+    setAttendeeInput("");
+  };
+
+  const removeAttendee = (email) => setAttendees((a) => a.filter((x) => x !== email));
+
+  const shareText = useMemo(
+    () => buildShareMessage(fields, successResult, reminderPreset),
+    [fields, successResult, reminderPreset],
+  );
 
   const saveAppointmentOnly = async () => {
     if (!fields.title || !fields.date) {
@@ -287,7 +350,8 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
         }).catch(() => {});
       }
       toast.success("Saved to MemoryMate");
-      reset();
+      setSuccessResult({ memorymate_only: true });
+      setPhase("success");
       onSuccess?.();
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Could not save appointment");
@@ -298,7 +362,7 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
     setBusy("google");
     setAddError("");
     try {
-      await api.post("/calendar/add-event", {
+      const { data } = await api.post("/calendar/add-event", {
         title: fields.title, date: fields.date,
         time: fields.all_day ? "" : fields.time,
         end_time: fields.all_day ? "" : (fields.end_time || ""),
@@ -307,16 +371,25 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
         notes: fields.notes,
         reminder: fields.reminder,
         source: "ai_draft",
+        online_meeting: onlineMeeting && connected,
+        meeting_provider: onlineMeeting && connected ? "google_meet" : null,
+        attendees,
       });
-      toast.success("Added to Google Calendar");
       setConfirmOpen(false);
-      reset();
+      setSuccessResult(data);
+      setPhase("success");
+      if (data.meet_warning) {
+        toast.warning(data.meet_warning);
+      } else {
+        toast.success("Added to Google Calendar");
+      }
       onSuccess?.();
     } catch (err) {
-      const msg = "Could not add this to Google Calendar. Please check the date/time or reconnect Google Calendar.";
+      const fallback = "Could not add this to Google Calendar. Please check the date/time or reconnect Google Calendar.";
+      const msg = formatApiError(err.response?.data?.detail) || fallback;
       setAddError(msg);
       setConfirmOpen(false);
-      toast.error(formatApiError(err.response?.data?.detail) || msg);
+      toast.error(msg);
     } finally { setBusy(""); }
   };
 
@@ -387,7 +460,10 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
                     className="mt-1 rounded-xl" data-testid="cal-ai-time" />
                 </div>
                 <div className="flex items-center gap-2 pb-2">
-                  <Switch checked={fields.all_day} onCheckedChange={(v) => setFields((f) => ({ ...f, all_day: v }))} data-testid="cal-ai-allday" />
+                  <Switch checked={fields.all_day} onCheckedChange={(v) => {
+                    setFields((f) => ({ ...f, all_day: v }));
+                    if (v) setOnlineMeeting(false);
+                  }} data-testid="cal-ai-allday" />
                   <Label className="text-sm">All day</Label>
                 </div>
               </div>
@@ -466,7 +542,68 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
             </p>
           </div>
 
-          {/* C. Safety / review */}
+          {/* C. Meeting & sharing options */}
+          <div className="rounded-xl border border-stone-200 p-4 space-y-4" data-testid="cal-ai-meeting-section">
+            <h4 className="text-sm font-semibold text-stone-700 uppercase tracking-wide flex items-center gap-1">
+              <Video className="w-4 h-4" /> Meeting &amp; sharing options
+            </h4>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-stone-100 bg-stone-50 p-3">
+              <div>
+                <p className="text-sm font-medium">Add online meeting link</p>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  MemoryMate can request a Google Meet link when adding this event to Google Calendar.
+                </p>
+                {!connected && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Connect Google Calendar to create a Google event or Meet link.
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-stone-500">Google Meet</span>
+                <Switch
+                  checked={onlineMeeting}
+                  onCheckedChange={setOnlineMeeting}
+                  disabled={!connected || fields.all_day}
+                  data-testid="cal-ai-online-meeting"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Invite people</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  value={attendeeInput}
+                  onChange={(e) => setAttendeeInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addAttendee())}
+                  placeholder="name@example.com"
+                  className="rounded-xl flex-1"
+                  data-testid="cal-ai-attendee-input"
+                />
+                <Button type="button" variant="outline" onClick={addAttendee} className="rounded-xl shrink-0"
+                  data-testid="cal-ai-add-attendee">
+                  Add email
+                </Button>
+              </div>
+              <p className="text-xs text-stone-500">Invites will only be sent after you confirm.</p>
+              {attendees.length > 0 && (
+                <ul className="space-y-1" data-testid="cal-ai-attendee-list">
+                  {attendees.map((email) => (
+                    <li key={email} className="flex items-center justify-between text-sm bg-stone-50 rounded-lg px-3 py-1.5">
+                      <span>{email}</span>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 text-stone-500"
+                        onClick={() => removeAttendee(email)} data-testid={`cal-ai-remove-${email}`}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          {/* D. Safety / review */}
           <div className="rounded-xl border border-stone-200 p-4 space-y-3">
             <h4 className="text-sm font-semibold text-stone-700 uppercase tracking-wide">Safety &amp; review</h4>
             <span className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border ${CONF_BADGE[meta.confidence] || CONF_BADGE.medium}`}
@@ -484,7 +621,7 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
             )}
           </div>
 
-          {/* D. Final actions */}
+          {/* E. Final actions */}
           <div className="rounded-xl border border-stone-200 p-4 space-y-3">
             <h4 className="text-sm font-semibold text-stone-700 uppercase tracking-wide">Final actions</h4>
             {addError && (
@@ -510,7 +647,7 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
                 </Button>
               ) : (
                 <p className="text-sm text-stone-500 self-center">
-                  Connect Google Calendar to add this event there.
+                  Connect Google Calendar to create a Google event or Meet link.
                 </p>
               )}
             </div>
@@ -525,7 +662,8 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
               <ShieldCheck className="w-5 h-5 text-sky-600" /> Add this event to Google Calendar?
             </DialogTitle>
             <DialogDescription>
-              MemoryMate will create a new calendar event. It will not edit or delete any existing Google Calendar events.
+              MemoryMate will create a new Google Calendar event. It will not edit or delete any existing events.
+              Invites and meeting links are only created after you confirm.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm space-y-2" data-testid="cal-ai-confirm-summary">
@@ -548,6 +686,11 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
               </p>
               {fields.location?.trim() && <LocationNavLinks location={fields.location} className="mt-2" />}
             </div>
+            <p><span className="text-stone-500">Online meeting:</span> {onlineMeeting && connected ? "Yes (Google Meet)" : "No"}</p>
+            <p>
+              <span className="text-stone-500">Attendees:</span>{" "}
+              {attendees.length ? attendees.join(", ") : "None"}
+            </p>
             {fields.notes && <p><span className="text-stone-500">Notes:</span> {fields.notes}</p>}
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
@@ -561,6 +704,76 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {phase === "success" && successResult && (
+        <div className="bg-white border border-emerald-200 rounded-2xl p-5 mb-4 space-y-4" data-testid="cal-ai-success-share">
+          <h3 className="font-heading font-semibold text-lg flex items-center gap-2 text-emerald-800">
+            <ShieldCheck className="w-5 h-5" />
+            {successResult.memorymate_only ? "Saved to MemoryMate" : "Event added to Google Calendar"}
+          </h3>
+          {successResult.meeting_link && (
+            <p className="text-sm">
+              <span className="text-stone-500">Meeting link:</span>{" "}
+              <a href={successResult.meeting_link} target="_blank" rel="noopener noreferrer"
+                className="text-sky-600 underline break-all">{successResult.meeting_link}</a>
+            </p>
+          )}
+          {successResult.meet_warning && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+              {successResult.meet_warning}
+            </p>
+          )}
+          <div className="rounded-xl border border-stone-200 p-4 space-y-3">
+            <h4 className="text-sm font-semibold text-stone-700 uppercase tracking-wide flex items-center gap-1">
+              <Share2 className="w-4 h-4" /> Share event
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" className="rounded-xl"
+                onClick={() => copyText(shareText).then(() => toast.success("Event details copied"))}
+                data-testid="cal-ai-copy-details">
+                <Copy className="w-3.5 h-3.5 mr-1" /> Copy event details
+              </Button>
+              {successResult.html_link && (
+                <>
+                  <Button variant="outline" size="sm" className="rounded-xl"
+                    onClick={() => copyText(successResult.html_link).then(() => toast.success("Calendar link copied"))}
+                    data-testid="cal-ai-copy-event-link">
+                    <Copy className="w-3.5 h-3.5 mr-1" /> Copy event link
+                  </Button>
+                  <Button variant="outline" size="sm" className="rounded-xl"
+                    onClick={() => openExternal(successResult.html_link)} data-testid="cal-ai-open-gcal">
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open Google Calendar event
+                  </Button>
+                </>
+              )}
+              {successResult.meeting_link && (
+                <Button variant="outline" size="sm" className="rounded-xl"
+                  onClick={() => copyText(successResult.meeting_link).then(() => toast.success("Meeting link copied"))}
+                  data-testid="cal-ai-copy-meeting-link">
+                  <Copy className="w-3.5 h-3.5 mr-1" /> Copy meeting link
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="rounded-xl"
+                onClick={() => openExternal(whatsappShareUrl(shareText))} data-testid="cal-ai-share-whatsapp">
+                Share by WhatsApp
+              </Button>
+              <Button variant="outline" size="sm" className="rounded-xl"
+                onClick={() => openExternal(emailShareUrl(fields.title, shareText))} data-testid="cal-ai-share-email">
+                <Mail className="w-3.5 h-3.5 mr-1" /> Share by email
+              </Button>
+            </div>
+            {!successResult.html_link && !successResult.memorymate_only && (
+              <p className="text-xs text-stone-500">Google event link was not returned by Google Calendar.</p>
+            )}
+            {successResult.memorymate_only && (
+              <p className="text-xs text-stone-500">
+                Connect Google Calendar to create a Google event or Meet link.
+              </p>
+            )}
+          </div>
+          <Button onClick={reset} className="rounded-xl" data-testid="cal-ai-done">Done</Button>
+        </div>
+      )}
     </section>
   );
 }

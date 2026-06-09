@@ -25,10 +25,12 @@ SECURITY: OAuth access/refresh tokens are encrypted at rest via crypto.py before
 they touch MongoDB and decrypted only when calling Google. Raw tokens are never
 returned to the frontend (/status exposes only the connected email).
 """
+import json
 import os
+import re
 import uuid
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as date_type
 from zoneinfo import ZoneInfo
 
 import jwt
@@ -155,8 +157,62 @@ async def _connected_link(user: dict) -> dict:
     pid = await patient_id_for(user)
     link = await _link_for(pid)
     if not link:
-        raise HTTPException(status_code=409, detail="Google Calendar is not connected yet.")
+        raise HTTPException(status_code=409, detail="Google Calendar is not connected. Please reconnect.")
     return link
+
+
+def _normalize_date_iso(raw: str) -> str:
+    """Normalize event date to YYYY-MM-DD. Accepts ISO or DD/MM/YYYY."""
+    d = (raw or "").strip()
+    if not d:
+        raise HTTPException(status_code=400, detail="A title and date are required to add an event.")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):
+        try:
+            date_type.fromisoformat(d)
+            return d
+        except ValueError:
+            pass
+    slash = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", d)
+    if slash:
+        day, month, year = int(slash.group(1)), int(slash.group(2)), int(slash.group(3))
+        try:
+            return date_type(year, month, day).isoformat()
+        except ValueError:
+            pass
+    raise HTTPException(status_code=400, detail="This date/time format is invalid. Please review the event time.")
+
+
+def _google_calendar_error_detail(status_code: int, body_text: str) -> str:
+    """Map Google Calendar API errors to safe, actionable user messages."""
+    msg_lower = ""
+    reasons: list[str] = []
+    try:
+        data = json.loads(body_text)
+        err = data.get("error") or {}
+        msg_lower = (err.get("message") or "").lower()
+        for e in err.get("errors") or []:
+            if e.get("reason"):
+                reasons.append(str(e["reason"]))
+        for detail in err.get("details") or []:
+            if detail.get("reason"):
+                reasons.append(str(detail["reason"]))
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        msg_lower = (body_text or "").lower()
+
+    reasons_lower = " ".join(reasons).lower()
+    if (
+        "calendar api has not been used" in msg_lower
+        or "service_disabled" in reasons_lower
+        or "accessnotconfigured" in reasons_lower
+    ):
+        return "Google Calendar API is not enabled in Google Cloud."
+    if status_code == 401 or "invalid_grant" in msg_lower:
+        return "Calendar access expired. Please reconnect."
+    if status_code == 403 and ("insufficient" in msg_lower or "scope" in msg_lower):
+        return "Calendar permission is missing. Please reconnect."
+    if status_code == 400:
+        return "Google rejected the event. Please try reconnecting."
+    return "Google rejected the event. Please try reconnecting."
 
 
 async def _cal_get(token: str, params: dict) -> dict:
@@ -399,19 +455,78 @@ def _add_minutes_to_hm(hm: str, minutes: int) -> str:
     return f"{total // 60:02d}:{total % 60:02d}"
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_attendees(raw: list[str] | None) -> list[str]:
+    """Validate and dedupe attendee emails."""
+    if not raw:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in raw:
+        email = (item or "").strip().lower()
+        if not email:
+            continue
+        if not _EMAIL_RE.match(email):
+            raise HTTPException(status_code=400, detail=f"Invalid attendee email: {item}")
+        if email in seen:
+            continue
+        seen.add(email)
+        out.append(email)
+    return out
+
+
+def _extract_meeting_link(created: dict) -> str:
+    """Pull Google Meet / hangout link from a created event — never invent."""
+    link = created.get("hangoutLink") or ""
+    if link:
+        return link
+    for ep in (created.get("conferenceData") or {}).get("entryPoints") or []:
+        if ep.get("entryPointType") == "video" and ep.get("uri"):
+            return ep["uri"]
+    return ""
+
+
 def _build_google_event(
     title: str, date: str, time: str, end_time: str,
     all_day: bool, location: str, notes: str, tz: str,
+    attendees: list[str] | None = None,
+    online_meeting: bool = False,
+    meeting_provider: str | None = None,
+    request_id: str | None = None,
 ) -> dict:
     """Build Google Calendar event JSON. Plain-text location only — no Maps/Places APIs."""
     loc = location or ""
     desc = notes or "Added by MemoryMate"
     if all_day:
-        return {"summary": title, "location": loc, "description": desc,
-                "start": {"date": date}, "end": {"date": date}}
-    return {"summary": title, "location": loc, "description": desc,
-            "start": {"dateTime": f"{date}T{time}:00", "timeZone": tz},
-            "end": {"dateTime": f"{date}T{end_time}:00", "timeZone": tz}}
+        event: dict = {"summary": title, "location": loc, "description": desc,
+                       "start": {"date": date}, "end": {"date": date}}
+    else:
+        event = {"summary": title, "location": loc, "description": desc,
+                 "start": {"dateTime": f"{date}T{time}:00", "timeZone": tz},
+                 "end": {"dateTime": f"{date}T{end_time}:00", "timeZone": tz}}
+    if attendees:
+        event["attendees"] = [{"email": e} for e in attendees]
+    if online_meeting and meeting_provider == "google_meet" and not all_day:
+        event["conferenceData"] = {
+            "createRequest": {
+                "requestId": request_id or str(uuid.uuid4()),
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        }
+    return event
+
+
+async def _insert_google_event(
+    token: str, event: dict, *, with_conference: bool,
+) -> httpx.Response:
+    params = {"conferenceDataVersion": "1"} if with_conference else {}
+    async with httpx.AsyncClient(timeout=20) as c:
+        return await c.post(
+            EVENTS_URL, params=params, json=event,
+            headers={"Authorization": f"Bearer {token}"},
+        )
 
 
 def _normalize_event_times(time: str, end_time: str, all_day: bool) -> tuple[str, str]:
@@ -450,6 +565,9 @@ class AddEventBody(BaseModel):
     notes: str | None = ""
     reminder: str | None = ""
     source: str | None = "manual"  # manual | ai_draft
+    online_meeting: bool = False
+    meeting_provider: str | None = None  # google_meet
+    attendees: list[str] | None = None
 
 
 @router.post("/add-event")
@@ -477,44 +595,107 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
         location, notes = body.location or "", body.notes or ""
         reminder = body.reminder or ""
 
-    if not title or not date:
+    if not title:
         raise HTTPException(status_code=400, detail="A title and date are required to add an event.")
+    date = _normalize_date_iso(date)
     if not all_day and not time:
         raise HTTPException(status_code=400, detail="Please set a start time or mark the event as all-day.")
     if not all_day and time:
         time, end_time = _normalize_event_times(time, end_time or "", all_day)
 
+    attendees = _normalize_attendees(body.attendees if not body.appointment_id else None)
+    want_meet = bool(body.online_meeting and body.meeting_provider == "google_meet" and not all_day)
+    if body.online_meeting and body.meeting_provider not in (None, "google_meet"):
+        raise HTTPException(status_code=400, detail="Only Google Meet is supported for online meetings.")
+    if body.online_meeting and all_day:
+        raise HTTPException(status_code=400, detail="Online meetings require a start time (not all-day).")
+
     link = await _connected_link(user)
+    token_refreshed = False
+    expiry = link.get("token_expiry")
+    if expiry:
+        try:
+            token_refreshed = datetime.fromisoformat(expiry) - datetime.now(timezone.utc) <= timedelta(seconds=60)
+        except ValueError:
+            token_refreshed = True
     token = await _refresh(link)
     tz = await _resolve_tz(pid, user)
 
-    event = _build_google_event(title, date, time, end_time, all_day, location, notes, tz)
+    meet_request_id = str(uuid.uuid4())
+    event = _build_google_event(
+        title, date, time, end_time, all_day, location, notes, tz,
+        attendees=attendees, online_meeting=want_meet,
+        meeting_provider="google_meet" if want_meet else None,
+        request_id=meet_request_id,
+    )
 
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.post(EVENTS_URL, json=event, headers={"Authorization": f"Bearer {token}"})
+    logger.info(
+        "calendar add-event: date=%s start=%s end=%s tz=%s all_day=%s location=%s "
+        "online_meeting=%s attendees=%d email=%s token_decrypt_ok=%s token_refresh_attempted=%s",
+        date, time or "-", end_time or "-", tz, all_day,
+        "yes" if (location or "").strip() else "no",
+        want_meet, len(attendees), link.get("google_email", "?"),
+        crypto.encryption_available(), token_refreshed,
+    )
+
+    meet_warning = ""
+    r = await _insert_google_event(token, event, with_conference=want_meet)
+    if r.status_code >= 400 and want_meet:
+        # Event creation must not fail solely because Meet link could not be created.
+        plain = _build_google_event(
+            title, date, time, end_time, all_day, location, notes, tz, attendees=attendees,
+        )
+        r = await _insert_google_event(token, plain, with_conference=False)
+        if r.status_code < 400:
+            meet_warning = "Event was added, but the meeting link could not be created."
+            logger.warning("calendar meet link not created; event added without conference")
     if r.status_code >= 400:
-        logger.warning("calendar insert failed: %s", r.text)
-        raise HTTPException(status_code=502, detail="Could not add the event to Google Calendar.")
+        detail = _google_calendar_error_detail(r.status_code, r.text)
+        logger.warning(
+            "calendar insert failed: google_status=%s reason=%s email=%s",
+            r.status_code, detail, link.get("google_email", "?"),
+        )
+        if "reconnect" in detail.lower() and "not enabled" not in detail.lower():
+            raise HTTPException(status_code=401, detail=detail)
+        raise HTTPException(status_code=502, detail=detail)
     created = r.json()
+    meeting_link = _extract_meeting_link(created)
+    html_link = created.get("htmlLink", "")
+    event_status = created.get("status", "")
 
+    appt_fields = {
+        "google_event_id": created.get("id"),
+        "google_event_link": html_link,
+        "meeting_link": meeting_link,
+        "attendees": attendees,
+        "online_meeting": want_meet,
+    }
     if not appt:
         appt = {
             "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
             "title": title, "doctor_or_clinic": "", "date": date, "time": time or "",
             "location": location, "notes": notes, "transport_notes": "",
-            "reminder_time": reminder, "google_event_id": created.get("id"),
+            "reminder_time": reminder, **appt_fields,
             "source": body.source or "manual", "created_at": NOW(),
         }
         await db.appointments.insert_one(appt)
         await _maybe_create_reminder(pid, user["id"], title, date, time or "", reminder)
     else:
-        await db.appointments.update_one(
-            {"id": appt["id"]}, {"$set": {"google_event_id": created.get("id")}})
+        await db.appointments.update_one({"id": appt["id"]}, {"$set": appt_fields})
 
     await _log(user["id"], "calendar_add_event", "appointment", appt["id"], created.get("id", ""))
     kind = "created_ai" if body.source == "ai_draft" else "added"
-    await _activity(pid, user["id"], kind, title)
+    activity_detail = title
+    if meeting_link:
+        activity_detail = f"{title} · Google Meet"
+    await _activity(pid, user["id"], kind, activity_detail)
     return {
-        "ok": True, "google_event_id": created.get("id"), "html_link": created.get("htmlLink", ""),
+        "ok": True,
+        "google_event_id": created.get("id"),
+        "html_link": html_link,
+        "meeting_link": meeting_link,
+        "hangout_link": meeting_link,
+        "event_status": event_status,
+        "meet_warning": meet_warning,
         "appointment_id": appt["id"],
     }

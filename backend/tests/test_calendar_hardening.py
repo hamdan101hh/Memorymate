@@ -8,7 +8,9 @@ Pure (no running server / DB) tests for:
 """
 import importlib
 import inspect
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -176,6 +178,134 @@ class TestEventTimeNormalization:
         gcal = importlib.import_module("gcal")
         t, e = gcal._normalize_event_times("16:00", "", True)
         assert e == ""
+
+
+class TestDateAndGoogleErrors:
+    def test_normalize_iso_date(self):
+        gcal = importlib.import_module("gcal")
+        assert gcal._normalize_date_iso("2026-06-10") == "2026-06-10"
+
+    def test_normalize_dd_mm_yyyy_date(self):
+        gcal = importlib.import_module("gcal")
+        assert gcal._normalize_date_iso("10/06/2026") == "2026-06-10"
+
+    def test_invalid_date_rejected(self):
+        gcal = importlib.import_module("gcal")
+        with pytest.raises(HTTPException) as exc:
+            gcal._normalize_date_iso("not-a-date")
+        assert exc.value.status_code == 400
+        assert "invalid" in exc.value.detail.lower()
+
+    def test_google_api_disabled_error(self):
+        gcal = importlib.import_module("gcal")
+        body = json.dumps({
+            "error": {
+                "code": 403,
+                "message": "Google Calendar API has not been used in project 123 before or it is disabled.",
+                "errors": [{"reason": "accessNotConfigured"}],
+                "details": [{"reason": "SERVICE_DISABLED"}],
+            }
+        })
+        assert "not enabled" in gcal._google_calendar_error_detail(403, body).lower()
+
+    def test_google_insufficient_scope_error(self):
+        gcal = importlib.import_module("gcal")
+        body = json.dumps({"error": {"code": 403, "message": "Insufficient Permission for scope"}})
+        assert "permission" in gcal._google_calendar_error_detail(403, body).lower()
+
+    def test_timed_event_google_payload(self):
+        gcal = importlib.import_module("gcal")
+        event = gcal._build_google_event(
+            "Dentist Appointment", "2026-06-10", "16:00", "17:00",
+            False, "Dubai Mall", "notes", "Asia/Dubai",
+        )
+        assert event["start"] == {"dateTime": "2026-06-10T16:00:00", "timeZone": "Asia/Dubai"}
+        assert event["end"] == {"dateTime": "2026-06-10T17:00:00", "timeZone": "Asia/Dubai"}
+        assert event["location"] == "Dubai Mall"
+
+
+class TestMeetingAndAttendees:
+    def test_conference_data_when_online_meeting(self):
+        gcal = importlib.import_module("gcal")
+        event = gcal._build_google_event(
+            "Family meeting", "2026-06-10", "17:00", "18:00", False, "", "notes", "Asia/Dubai",
+            online_meeting=True, meeting_provider="google_meet", request_id="req-1",
+        )
+        assert "conferenceData" in event
+        assert event["conferenceData"]["createRequest"]["conferenceSolutionKey"]["type"] == "hangoutsMeet"
+
+    def test_no_conference_when_off(self):
+        gcal = importlib.import_module("gcal")
+        event = gcal._build_google_event(
+            "Family meeting", "2026-06-10", "17:00", "18:00", False, "", "notes", "Asia/Dubai",
+        )
+        assert "conferenceData" not in event
+
+    def test_attendees_in_event_body(self):
+        gcal = importlib.import_module("gcal")
+        event = gcal._build_google_event(
+            "Meet", "2026-06-10", "17:00", "18:00", False, "", "", "UTC",
+            attendees=["alice@example.com", "bob@example.com"],
+        )
+        assert event["attendees"] == [{"email": "alice@example.com"}, {"email": "bob@example.com"}]
+
+    def test_invalid_attendee_returns_400(self):
+        gcal = importlib.import_module("gcal")
+        with pytest.raises(HTTPException) as exc:
+            gcal._normalize_attendees(["not-an-email"])
+        assert exc.value.status_code == 400
+
+    def test_duplicate_attendees_deduped(self):
+        gcal = importlib.import_module("gcal")
+        assert gcal._normalize_attendees(["a@x.com", "A@X.COM"]) == ["a@x.com"]
+
+    def test_extract_meeting_link_from_conference_data(self):
+        gcal = importlib.import_module("gcal")
+        created = {
+            "conferenceData": {
+                "entryPoints": [{"entryPointType": "video", "uri": "https://meet.google.com/abc-defg-hij"}],
+            }
+        }
+        assert gcal._extract_meeting_link(created) == "https://meet.google.com/abc-defg-hij"
+
+    def test_extract_hangout_link(self):
+        gcal = importlib.import_module("gcal")
+        assert gcal._extract_meeting_link({"hangoutLink": "https://meet.google.com/xyz"}) == "https://meet.google.com/xyz"
+
+    def test_no_whatsapp_business_api_in_gcal(self):
+        gcal = importlib.import_module("gcal")
+        src = inspect.getsource(gcal)
+        assert "graph.facebook.com" not in src
+        assert "whatsapp" not in src.lower()
+
+    def test_insert_event_uses_conference_data_version(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        gcal = importlib.import_module("gcal")
+        mock_resp = AsyncMock()
+        mock_resp.post = AsyncMock(return_value=type("R", (), {"status_code": 200, "text": "{}"})())
+        with patch("httpx.AsyncClient") as client_cls:
+            client_cls.return_value.__aenter__.return_value = mock_resp
+            asyncio.run(gcal._insert_google_event("tok", {"summary": "x"}, with_conference=True))
+            _, kwargs = mock_resp.post.call_args
+            assert kwargs.get("params") == {"conferenceDataVersion": "1"}
+
+    def test_add_event_response_includes_share_fields(self):
+        gcal = importlib.import_module("gcal")
+        # Document API contract for frontend share UI.
+        import inspect as ins
+        src = ins.getsource(gcal.add_event)
+        for field in ("html_link", "meeting_link", "hangout_link", "event_status", "meet_warning"):
+            assert field in src
+
+    def test_frontend_uses_free_share_links_only(self):
+        path = Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "caregiver" / "CreateEventWithAI.js"
+        src = path.read_text()
+        assert "wa.me/?text=" in src
+        assert "mailto:?subject=" in src
+        assert "graph.facebook.com" not in src
+        assert "twilio" not in src.lower()
 
 
 class TestGoogleEventLocation:
