@@ -41,6 +41,8 @@ from db import db
 from auth import get_current_user, require_role, _secret, _log
 from routes import patient_id_for
 import crypto
+import ai
+import usage
 
 logger = logging.getLogger("memorymate.gcal")
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -368,18 +370,54 @@ async def import_event(body: ImportBody, user: dict = Depends(require_role("care
     return {k: v for k, v in appt.items() if k != "_id"}
 
 
+# ---------------- AI draft (never touches Google Calendar) ----------------
+class DraftEventBody(BaseModel):
+    raw_text: str
+    timezone: str | None = None
+
+
+@router.post("/draft-event")
+async def draft_event(body: DraftEventBody, user: dict = Depends(require_role("caregiver", "admin"))):
+    """Parse natural language into a reviewable draft. Does NOT create any Google event."""
+    if not body.raw_text.strip():
+        raise HTTPException(status_code=400, detail="Please describe the event.")
+    pid = await patient_id_for(user)
+    tz = _resolve_tz_value(body.timezone) if body.timezone else await _resolve_tz(pid, user)
+    now_local = datetime.now(ZoneInfo(tz))
+    result = await ai.draft_calendar_event(body.raw_text.strip(), now_local.date().isoformat(), tz)
+    await usage.record(pid, "calendar_draft", in_chars=len(body.raw_text), out_chars=200, tier="cheap")
+    return result
+
+
+async def _maybe_create_reminder(pid: str, user_id: str, title: str, date: str, time: str, reminder: str) -> None:
+    if not reminder.strip():
+        return
+    await db.reminders.insert_one({
+        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user_id,
+        "title": title, "description": reminder,
+        "category": "appointment", "priority": "medium",
+        "due_date": date or "", "due_time": time or "", "repeat_rule": "none",
+        "status": "pending", "source": "calendar_ai_draft", "created_at": NOW(), "completed_at": None,
+    })
+
+
 # ---------------- add (MemoryMate -> calendar, after explicit approval) ----------------
 class AddEventBody(BaseModel):
     appointment_id: str | None = None
     title: str | None = None
     date: str | None = None
     time: str | None = None
+    end_time: str | None = None
+    all_day: bool = False
     location: str | None = ""
     notes: str | None = ""
+    reminder: str | None = ""
+    source: str | None = "manual"  # manual | ai_draft
 
 
 @router.post("/add-event")
 async def add_event(body: AddEventBody, user: dict = Depends(require_role("caregiver", "admin"))):
+    """Create a NEW Google Calendar event from reviewed/confirmed structured data only."""
     pid = await patient_id_for(user)
     appt = None
     if body.appointment_id:
@@ -388,29 +426,46 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
             raise HTTPException(status_code=404, detail="Appointment not found.")
         if appt.get("google_event_id"):
             raise HTTPException(status_code=409, detail="This appointment is already on Google Calendar.")
-        title, date, time = appt.get("title"), appt.get("date"), appt.get("time")
+        title = appt.get("title")
+        date = appt.get("date")
+        time = appt.get("time")
+        end_time = ""
+        all_day = not bool(time)
         location, notes = appt.get("location", ""), appt.get("notes", "")
+        reminder = appt.get("reminder_time", "")
     else:
         title, date, time = body.title, body.date, body.time
+        end_time = body.end_time or ""
+        all_day = body.all_day
         location, notes = body.location or "", body.notes or ""
+        reminder = body.reminder or ""
+
     if not title or not date:
         raise HTTPException(status_code=400, detail="A title and date are required to add an event.")
+    if not all_day and not time:
+        raise HTTPException(status_code=400, detail="Please set a start time or mark the event as all-day.")
 
     link = await _connected_link(user)
     token = await _refresh(link)
     tz = await _resolve_tz(pid, user)
-    if time:
+
+    if all_day:
+        event = {"summary": title, "location": location,
+                 "description": notes or "Added by MemoryMate",
+                 "start": {"date": date}, "end": {"date": date}}
+    else:
         start_dt = f"{date}T{time}:00"
-        try:
-            end_dt = (datetime.fromisoformat(start_dt) + timedelta(hours=1)).isoformat()
-        except ValueError:
-            end_dt = start_dt
-        event = {"summary": title, "location": location, "description": notes or "Added by MemoryMate",
+        if end_time:
+            end_dt = f"{date}T{end_time}:00"
+        else:
+            try:
+                end_dt = (datetime.fromisoformat(start_dt) + timedelta(hours=1)).isoformat()
+            except ValueError:
+                end_dt = start_dt
+        event = {"summary": title, "location": location,
+                 "description": notes or "Added by MemoryMate",
                  "start": {"dateTime": start_dt, "timeZone": tz},
                  "end": {"dateTime": end_dt, "timeZone": tz}}
-    else:
-        event = {"summary": title, "location": location, "description": notes or "Added by MemoryMate",
-                 "start": {"date": date}, "end": {"date": date}}
 
     async with httpx.AsyncClient(timeout=20) as c:
         r = await c.post(EVENTS_URL, json=event, headers={"Authorization": f"Bearer {token}"})
@@ -418,9 +473,25 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
         logger.warning("calendar insert failed: %s", r.text)
         raise HTTPException(status_code=502, detail="Could not add the event to Google Calendar.")
     created = r.json()
-    if appt:
+
+    if not appt:
+        appt = {
+            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+            "title": title, "doctor_or_clinic": "", "date": date, "time": time or "",
+            "location": location, "notes": notes, "transport_notes": "",
+            "reminder_time": reminder, "google_event_id": created.get("id"),
+            "source": body.source or "manual", "created_at": NOW(),
+        }
+        await db.appointments.insert_one(appt)
+        await _maybe_create_reminder(pid, user["id"], title, date, time or "", reminder)
+    else:
         await db.appointments.update_one(
             {"id": appt["id"]}, {"$set": {"google_event_id": created.get("id")}})
-    await _log(user["id"], "calendar_add_event", "appointment", appt["id"] if appt else "", created.get("id", ""))
-    await _activity(pid, user["id"], "added", title)
-    return {"ok": True, "google_event_id": created.get("id"), "html_link": created.get("htmlLink", "")}
+
+    await _log(user["id"], "calendar_add_event", "appointment", appt["id"], created.get("id", ""))
+    kind = "created_ai" if body.source == "ai_draft" else "added"
+    await _activity(pid, user["id"], kind, title)
+    return {
+        "ok": True, "google_event_id": created.get("id"), "html_link": created.get("htmlLink", ""),
+        "appointment_id": appt["id"],
+    }

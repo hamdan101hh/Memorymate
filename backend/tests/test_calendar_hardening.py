@@ -4,12 +4,15 @@ Pure (no running server / DB) tests for:
   - token encryption at rest (crypto.py): values are not plaintext, round-trip,
     plaintext tolerance, missing-key behavior in production.
   - timezone resolution fallback order/validation (gcal._resolve_tz_value).
+  - AI calendar event drafting (rule parser, medical warnings, missing fields).
 """
 import importlib
+from datetime import datetime, timezone
 
 import pytest
 
 import crypto
+import ai
 
 
 def _reset_crypto(monkeypatch, **env):
@@ -81,3 +84,34 @@ class TestTimezoneResolution:
         gcal = importlib.import_module("gcal")
         monkeypatch.setattr(gcal, "CAL_TIMEZONE", "Bad/Zone", raising=False)
         assert gcal._resolve_tz_value(None) == "UTC"
+
+
+class TestCalendarEventDraft:
+    REF = datetime(2026, 6, 7, 12, 0, tzinfo=timezone.utc)
+
+    def test_tomorrow_at_4pm_draft(self):
+        out = ai.parse_calendar_event_rules(
+            "Dentist appointment tomorrow at 4 PM, remind me 1 hour before.", self.REF)
+        assert out["draft"]["title"]
+        assert "dentist" in out["draft"]["title"].lower() or "Dentist" in out["draft"]["title"]
+        assert out["draft"]["date"] == "2026-06-08"
+        assert out["draft"]["time"] == "16:00"
+        assert "hour" in out["draft"]["reminder"].lower()
+        assert "ai_used" in out and out["ai_used"] is False
+
+    def test_unclear_date_missing_fields(self):
+        out = ai.parse_calendar_event_rules("Call someone soon maybe", self.REF)
+        assert "date" in out["missing_fields"]
+        assert out["confidence"] in ("low", "medium")
+
+    def test_medical_warning(self):
+        out = ai.parse_calendar_event_rules("Medicine review appointment on June 20 at 3 PM", self.REF)
+        assert any("medical" in w.lower() or "health" in w.lower() for w in out["warnings"])
+
+    def test_draft_endpoint_shape_via_rules(self):
+        # Rule parser output matches API contract fields.
+        out = ai.parse_calendar_event_rules("Lunch tomorrow at 1 PM", self.REF)
+        for k in ("draft", "confidence", "missing_fields", "warnings"):
+            assert k in out
+        for k in ("title", "date", "time", "end_time", "all_day", "location", "notes", "reminder"):
+            assert k in out["draft"]

@@ -8,15 +8,17 @@ import {
 } from "../../components/ui/dialog";
 import {
   CalendarDays, CheckCircle2, AlertTriangle, Loader2, Link2, Unlink,
-  CalendarPlus, Download, MapPin, RefreshCw, ShieldCheck, History, Lock,
+  CalendarPlus, Download, MapPin, RefreshCw, ShieldCheck, History, Lock, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import CreateEventWithAI from "./CreateEventWithAI";
 
 const ACTIVITY_LABELS = {
   connected: { label: "Connected Google Calendar", icon: Link2, color: "text-emerald-600" },
   disconnected: { label: "Disconnected Google Calendar", icon: Unlink, color: "text-stone-500" },
   imported: { label: "Imported event into MemoryMate", icon: Download, color: "text-sky-600" },
   added: { label: "Added appointment to Google Calendar", icon: CalendarPlus, color: "text-sky-600" },
+  created_ai: { label: "Created AI-drafted event and added to Google Calendar", icon: Sparkles, color: "text-sky-600" },
   reconnect_needed: { label: "Reconnect needed (access expired)", icon: AlertTriangle, color: "text-amber-600" },
 };
 function fmtActivityTime(s) {
@@ -177,6 +179,10 @@ export default function CalendarConnector() {
         </div>
       )}
 
+      {status.configured && !status.connected && (
+        <CreateEventWithAI connected={false} onSuccess={undefined} />
+      )}
+
       {/* Connected */}
       {status.connected && (
         <>
@@ -190,6 +196,8 @@ export default function CalendarConnector() {
               <Unlink className="w-4 h-4 mr-1" /> Disconnect
             </Button>
           </div>
+
+          <CreateEventWithAI connected onSuccess={loadData} />
 
           {/* Suggestions to import (calendar -> MemoryMate) */}
           <section className="mb-8">
