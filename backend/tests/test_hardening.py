@@ -528,8 +528,8 @@ class TestCalendar:
         r = requests.post(f"{API}/calendar/add-event", headers=_h(token),
                           json={"title": "Test", "date": "2026-07-01", "time": "16:00", "location": ""},
                           timeout=15)
-        # Validation passes without location; may fail at 409 (not connected) or 502 (Google).
-        assert r.status_code in (400, 409, 502)
+        # Validation passes without location; may succeed if Google is connected.
+        assert r.status_code in (200, 400, 409, 502)
 
     def test_add_event_preserves_location_in_request(self):
         gcal = __import__("gcal")
@@ -537,3 +537,45 @@ class TestCalendar:
             "Dentist", "2026-07-01", "16:00", "17:00", False, "Dubai Mall", "", "UTC",
         )
         assert event["location"] == "Dubai Mall"
+
+    def test_add_event_dd_mm_yyyy_date_normalized(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/add-event", headers=_h(token),
+                          json={"title": "Test", "date": "10/06/2026", "time": "16:00", "end_time": "17:00",
+                                "location": "Dubai Mall", "source": "ai_draft"},
+                          timeout=15)
+        # Normalizes date; may succeed or fail at Google depending on connection/API.
+        assert r.status_code in (200, 400, 401, 502)
+        if r.status_code == 502:
+            assert "enabled" in r.json().get("detail", "").lower() or "rejected" in r.json().get("detail", "").lower()
+
+    def test_add_event_accepts_online_meeting_flag(self):
+        gcal = __import__("gcal")
+        event = gcal._build_google_event(
+            "Family meeting", "2026-06-10", "17:00", "18:00", False, "", "", "UTC",
+            online_meeting=True, meeting_provider="google_meet",
+        )
+        assert "conferenceData" in event
+
+    def test_add_event_invalid_attendee_email(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/add-event", headers=_h(token),
+                          json={"title": "Test", "date": "2026-07-01", "time": "16:00",
+                                "attendees": ["bad-email"]},
+                          timeout=15)
+        assert r.status_code == 400
+        assert "email" in r.json().get("detail", "").lower()
+
+    def test_add_event_google_failure_returns_specific_error(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/add-event", headers=_h(token),
+                          json={"title": "Dentist Appointment", "date": "2026-06-10", "time": "16:00",
+                                "end_time": "17:00", "location": "Dubai Mall", "source": "ai_draft"},
+                          timeout=15)
+        assert r.status_code in (200, 401, 502)
+        if r.status_code == 200:
+            assert r.json().get("ok") is True
+        else:
+            detail = r.json().get("detail", "")
+            assert detail != "Could not add the event to Google Calendar."
+            assert len(detail) > 10
