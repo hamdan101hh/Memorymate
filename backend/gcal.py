@@ -389,6 +389,43 @@ async def draft_event(body: DraftEventBody, user: dict = Depends(require_role("c
     return result
 
 
+def _hm_to_minutes(hm: str) -> int:
+    h, m = hm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _add_minutes_to_hm(hm: str, minutes: int) -> str:
+    total = (_hm_to_minutes(hm) + minutes) % (24 * 60)
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _build_google_event(
+    title: str, date: str, time: str, end_time: str,
+    all_day: bool, location: str, notes: str, tz: str,
+) -> dict:
+    """Build Google Calendar event JSON. Plain-text location only — no Maps/Places APIs."""
+    loc = location or ""
+    desc = notes or "Added by MemoryMate"
+    if all_day:
+        return {"summary": title, "location": loc, "description": desc,
+                "start": {"date": date}, "end": {"date": date}}
+    return {"summary": title, "location": loc, "description": desc,
+            "start": {"dateTime": f"{date}T{time}:00", "timeZone": tz},
+            "end": {"dateTime": f"{date}T{end_time}:00", "timeZone": tz}}
+
+
+def _normalize_event_times(time: str, end_time: str, all_day: bool) -> tuple[str, str]:
+    """Default missing end to start + 1 hour; reject end <= start."""
+    if all_day or not time:
+        return time, end_time or ""
+    end = (end_time or "").strip()
+    if not end:
+        end = _add_minutes_to_hm(time, 60)
+    if _hm_to_minutes(end) <= _hm_to_minutes(time):
+        raise HTTPException(status_code=400, detail="End time must be after the start time.")
+    return time, end
+
+
 async def _maybe_create_reminder(pid: str, user_id: str, title: str, date: str, time: str, reminder: str) -> None:
     if not reminder.strip():
         return
@@ -444,28 +481,14 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
         raise HTTPException(status_code=400, detail="A title and date are required to add an event.")
     if not all_day and not time:
         raise HTTPException(status_code=400, detail="Please set a start time or mark the event as all-day.")
+    if not all_day and time:
+        time, end_time = _normalize_event_times(time, end_time or "", all_day)
 
     link = await _connected_link(user)
     token = await _refresh(link)
     tz = await _resolve_tz(pid, user)
 
-    if all_day:
-        event = {"summary": title, "location": location,
-                 "description": notes or "Added by MemoryMate",
-                 "start": {"date": date}, "end": {"date": date}}
-    else:
-        start_dt = f"{date}T{time}:00"
-        if end_time:
-            end_dt = f"{date}T{end_time}:00"
-        else:
-            try:
-                end_dt = (datetime.fromisoformat(start_dt) + timedelta(hours=1)).isoformat()
-            except ValueError:
-                end_dt = start_dt
-        event = {"summary": title, "location": location,
-                 "description": notes or "Added by MemoryMate",
-                 "start": {"dateTime": start_dt, "timeZone": tz},
-                 "end": {"dateTime": end_dt, "timeZone": tz}}
+    event = _build_google_event(title, date, time, end_time, all_day, location, notes, tz)
 
     async with httpx.AsyncClient(timeout=20) as c:
         r = await c.post(EVENTS_URL, json=event, headers={"Authorization": f"Bearer {token}"})

@@ -350,6 +350,31 @@ _MEDICAL_RE = re.compile(
     re.I,
 )
 _WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_WEEKDAY_RE = "|".join(_WEEKDAYS)
+_MONTH_RE = (
+    "january|february|march|april|may|june|july|august|september|october|november|december"
+)
+
+
+def _extract_location_from_text(text: str) -> str:
+    """Extract explicit 'at <place>' from user text. Never invents locations."""
+    if not text:
+        return ""
+    patterns = [
+        rf"\bat\s+(.+?)\s+(?:tomorrow|today)\b",
+        rf"\bat\s+(.+?)\s+on\s+(?:next\s+)?(?:{_WEEKDAY_RE})\b",
+        rf"\bat\s+(.+?)\s+on\s+(?:{_MONTH_RE})\s+\d{{1,2}}\b",
+        r"\bat\s+(.+?)\s+at\s+\d{1,2}",
+        r"\bat\s+(.+?)\s*,\s*remind\b",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.I)
+        if m:
+            loc = m.group(1).strip(" ,.-")
+            if not loc or re.match(r"^\d", loc):
+                continue
+            return loc[:120]
+    return ""
 
 
 def _parse_hm(h: int, m: int, ampm: str | None) -> str:
@@ -379,8 +404,7 @@ def parse_calendar_event_rules(raw_text: str, today: datetime) -> dict:
 
     if _MEDICAL_RE.search(text):
         warnings.append(
-            "This sounds like a health-related appointment. MemoryMate will not give medical advice — "
-            "please review the details before saving."
+            "Please review health-related details with a caregiver or doctor."
         )
 
     date = ""
@@ -437,10 +461,15 @@ def parse_calendar_event_rules(raw_text: str, today: datetime) -> dict:
     if rem_m:
         reminder = rem_m.group(1).strip()
 
+    location = _extract_location_from_text(text)
+
     # Title: strip common scheduling phrases; keep user's words only.
     title = text
+    if location:
+        title = re.sub(rf"\bat\s+{re.escape(location)}\b", "", title, flags=re.I)
     for pat in (
         r"\btomorrow\b", r"\btoday\b", r"\bnext\s+\w+day\b",
+        r"\bon\s+(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
         r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b",
         r"\bfrom\s+\d{1,2}.+?to\s+\d{1,2}.+?(?:pm|am)?\b",
         r"\bremind(?:\s+me)?\s+.+", r"\bon\s+\w+\s+\d{1,2}\b",
@@ -466,7 +495,7 @@ def parse_calendar_event_rules(raw_text: str, today: datetime) -> dict:
     return {
         "draft": {
             "title": title, "date": date, "time": time, "end_time": end_time,
-            "all_day": all_day, "location": "", "notes": "Created from user input",
+            "all_day": all_day, "location": location, "notes": "Created from user input",
             "reminder": reminder,
         },
         "confidence": confidence,
@@ -537,10 +566,7 @@ async def draft_calendar_event(raw_text: str, today_iso: str, timezone: str = "U
         if confidence != "high" and "I'm not fully sure" not in " ".join(warnings):
             warnings.append("I'm not fully sure about this. Please review before adding.")
         if _MEDICAL_RE.search(raw_text) and not any("medical" in w.lower() for w in warnings):
-            warnings.append(
-                "This sounds like a health-related appointment. MemoryMate will not give medical advice — "
-                "please review the details before saving."
-            )
+            warnings.append("Please review health-related details with a caregiver or doctor.")
         return {"draft": draft, "confidence": confidence, "missing_fields": missing,
                 "warnings": warnings, "ai_used": True}
     except Exception as e:

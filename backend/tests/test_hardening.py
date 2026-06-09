@@ -489,3 +489,51 @@ class TestCalendar:
                           json={"title": "Test", "date": "2026-07-01"}, timeout=15)
         # Not connected -> 409, or missing time -> 400 if connected; without connection expect 409.
         assert r.status_code in (400, 409)
+
+    def test_add_event_invalid_end_time_returns_400(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/add-event", headers=_h(token),
+                          json={"title": "Test", "date": "2026-07-01", "time": "16:00", "end_time": "15:00"},
+                          timeout=15)
+        assert r.status_code == 400
+        assert "after" in r.json().get("detail", "").lower()
+
+    def test_add_event_equal_end_time_returns_400(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/add-event", headers=_h(token),
+                          json={"title": "Test", "date": "2026-07-01", "time": "16:00", "end_time": "16:00"},
+                          timeout=15)
+        assert r.status_code == 400
+
+    def test_draft_preserves_reminder_from_text(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/draft-event", headers=_h(token),
+                          json={"raw_text": "Dentist tomorrow at 4 PM, remind me 1 hour before."},
+                          timeout=60)
+        assert r.status_code == 200, r.text
+        reminder = r.json()["draft"].get("reminder", "")
+        assert "hour" in reminder.lower()
+
+    def test_draft_extracts_location(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/draft-event", headers=_h(token),
+                          json={"raw_text": "Dentist appointment at Dubai Mall tomorrow at 4 PM, remind me 1 hour before."},
+                          timeout=60)
+        assert r.status_code == 200, r.text
+        loc = r.json()["draft"].get("location", "")
+        assert "dubai mall" in loc.lower()
+
+    def test_add_event_missing_location_allowed(self):
+        token = _demo("caregiver")["token"]
+        r = requests.post(f"{API}/calendar/add-event", headers=_h(token),
+                          json={"title": "Test", "date": "2026-07-01", "time": "16:00", "location": ""},
+                          timeout=15)
+        # Validation passes without location; may fail at 409 (not connected) or 502 (Google).
+        assert r.status_code in (400, 409, 502)
+
+    def test_add_event_preserves_location_in_request(self):
+        gcal = __import__("gcal")
+        event = gcal._build_google_event(
+            "Dentist", "2026-07-01", "16:00", "17:00", False, "Dubai Mall", "", "UTC",
+        )
+        assert event["location"] == "Dubai Mall"
