@@ -2,6 +2,7 @@
 Uses Claude Sonnet 4.6 via the Emergent LLM key. All functions are defensive and
 degrade gracefully so the app keeps working even if the AI call fails."""
 import os
+import re
 import json
 import uuid
 import tempfile
@@ -341,3 +342,209 @@ async def summarize_meeting(transcript: str, meta: dict | None = None) -> dict:
     except Exception as e:
         print(f"[ai.summarize_meeting] failed: {e}")
         return fallback
+
+
+# ---- calendar event drafting (approval-gated — draft only, never auto-add) ----
+_MEDICAL_RE = re.compile(
+    r"\b(doctor|dr\.?|dentist|medicine|medication|pharmacy|hospital|clinic|therapy|checkup|review)\b",
+    re.I,
+)
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _parse_hm(h: int, m: int, ampm: str | None) -> str:
+    if ampm:
+        ap = ampm.lower()
+        if ap == "pm" and h < 12:
+            h += 12
+        if ap == "am" and h == 12:
+            h = 0
+    return f"{h:02d}:{m:02d}"
+
+
+def parse_calendar_event_rules(raw_text: str, today: datetime) -> dict:
+    """Basic rule-based draft when AI is unavailable. Never invents doctor names."""
+    from datetime import timedelta
+
+    text = (raw_text or "").strip()
+    warnings: list[str] = []
+    missing: list[str] = []
+    if not text:
+        return {
+            "draft": {"title": "", "date": "", "time": "", "end_time": "", "all_day": False,
+                      "location": "", "notes": "Created from user input", "reminder": ""},
+            "confidence": "low", "missing_fields": ["title", "date"], "warnings": ["Please describe the event."],
+            "ai_used": False,
+        }
+
+    if _MEDICAL_RE.search(text):
+        warnings.append(
+            "This sounds like a health-related appointment. MemoryMate will not give medical advice — "
+            "please review the details before saving."
+        )
+
+    date = ""
+    if re.search(r"\btomorrow\b", text, re.I):
+        date = (today + timedelta(days=1)).date().isoformat()
+    elif re.search(r"\btoday\b", text, re.I):
+        date = today.date().isoformat()
+    else:
+        wd = re.search(r"\bnext\s+(\w+day)\b", text, re.I)
+        if wd:
+            target = wd.group(1).lower()
+            if target in _WEEKDAYS:
+                cur = today.weekday()
+                tgt = _WEEKDAYS.index(target)
+                delta = (tgt - cur) % 7
+                if delta == 0:
+                    delta = 7
+                date = (today + timedelta(days=delta)).date().isoformat()
+        if not date:
+            dm = re.search(r"\b(june|january|february|march|april|may|july|august|september|october|november|december)\s+(\d{1,2})\b", text, re.I)
+            if dm:
+                months = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+                          "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
+                m = months[dm.group(1).lower()]
+                d = int(dm.group(2))
+                y = today.year
+                try:
+                    date = datetime(y, m, d).date().isoformat()
+                except ValueError:
+                    pass
+        if not date:
+            iso = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", text)
+            if iso:
+                date = iso.group(1)
+
+    time = ""
+    end_time = ""
+    all_day = bool(re.search(r"\ball\s*day\b", text, re.I))
+    range_m = re.search(
+        r"from\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+to\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+        text, re.I,
+    )
+    at_m = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", text, re.I)
+    if range_m:
+        h1, m1, ap1 = int(range_m.group(1)), int(range_m.group(2) or 0), range_m.group(3)
+        h2, m2, ap2 = int(range_m.group(4)), int(range_m.group(5) or 0), range_m.group(6)
+        time = _parse_hm(h1, m1, ap1)
+        end_time = _parse_hm(h2, m2, ap2)
+    elif at_m:
+        time = _parse_hm(int(at_m.group(1)), int(at_m.group(2) or 0), at_m.group(3))
+
+    reminder = ""
+    rem_m = re.search(r"remind(?:\s+me)?\s+(.+?)(?:\.|$)", text, re.I)
+    if rem_m:
+        reminder = rem_m.group(1).strip()
+
+    # Title: strip common scheduling phrases; keep user's words only.
+    title = text
+    for pat in (
+        r"\btomorrow\b", r"\btoday\b", r"\bnext\s+\w+day\b",
+        r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b",
+        r"\bfrom\s+\d{1,2}.+?to\s+\d{1,2}.+?(?:pm|am)?\b",
+        r"\bremind(?:\s+me)?\s+.+", r"\bon\s+\w+\s+\d{1,2}\b",
+    ):
+        title = re.sub(pat, "", title, flags=re.I)
+    title = re.sub(r"\s+", " ", title).strip(" ,.-")
+    if len(title) > 80:
+        title = title[:77] + "..."
+    if not title:
+        title = "Appointment"
+
+    if not date:
+        missing.append("date")
+    if not all_day and not time:
+        missing.append("time")
+    if not title:
+        missing.append("title")
+
+    confidence = "high" if date and (time or all_day) and title else "medium" if date or time else "low"
+    if confidence != "high":
+        warnings.append("I'm not fully sure about this. Please review before adding.")
+
+    return {
+        "draft": {
+            "title": title, "date": date, "time": time, "end_time": end_time,
+            "all_day": all_day, "location": "", "notes": "Created from user input",
+            "reminder": reminder,
+        },
+        "confidence": confidence,
+        "missing_fields": missing,
+        "warnings": warnings,
+        "ai_used": False,
+    }
+
+
+async def draft_calendar_event(raw_text: str, today_iso: str, timezone: str = "UTC") -> dict:
+    """Turn natural language into a structured event draft. Never writes to Google Calendar."""
+    from datetime import datetime as dt
+    try:
+        today = dt.fromisoformat(today_iso)
+    except ValueError:
+        today = dt.now(timezone.utc)
+
+    if not AI_ENABLED:
+        out = parse_calendar_event_rules(raw_text, today)
+        if not out["draft"]["title"] and raw_text.strip():
+            out["warnings"].append("AI event drafting is not configured yet. A basic draft was created — please review.")
+        return out
+
+    system = (
+        SAFETY_RULES
+        + "\nYou extract a calendar event DRAFT from the user's words. "
+        "This is NOT saved automatically — a human will review first.\n"
+        "RULES:\n"
+        "- Use only information explicitly stated. Do NOT invent doctor names, locations, or instructions.\n"
+        "- If date/time is unclear, leave fields empty and list them in missing_fields.\n"
+        "- For medical-sounding events, add a warning (no medical advice) but still draft the appointment title/time the user said.\n"
+        "- Never say 'you forgot'.\n"
+        "- Reference date for relative terms: today is " + today_iso + f" (timezone {timezone}).\n"
+        "Respond ONLY with valid JSON:\n"
+        "{\n"
+        '  "draft": {\n'
+        '    "title": "short event title",\n'
+        '    "date": "YYYY-MM-DD or empty",\n'
+        '    "time": "HH:MM 24h start or empty",\n'
+        '    "end_time": "HH:MM 24h end or empty",\n'
+        '    "all_day": false,\n'
+        '    "location": "only if mentioned",\n'
+        '    "notes": "Created from user input",\n'
+        '    "reminder": "e.g. 1 hour before — only if mentioned"\n'
+        "  },\n"
+        '  "confidence": "low | medium | high",\n'
+        '  "missing_fields": ["date","time"],\n'
+        '  "warnings": ["optional safety messages"]\n'
+        "}\n"
+    )
+    try:
+        chat = _chat(system, cheap=True)
+        resp = await chat.send_message(UserMessage(text=f"User input:\n{raw_text}"))
+        data = _extract_json(resp)
+        draft = data.get("draft") or {}
+        for k, default in {"title": "", "date": "", "time": "", "end_time": "", "all_day": False,
+                           "location": "", "notes": "Created from user input", "reminder": ""}.items():
+            draft.setdefault(k, default)
+        missing = list(data.get("missing_fields") or [])
+        warnings = list(data.get("warnings") or [])
+        if not draft.get("date") and "date" not in missing:
+            missing.append("date")
+        if not draft.get("all_day") and not draft.get("time") and "time" not in missing:
+            missing.append("time")
+        if not draft.get("title") and "title" not in missing:
+            missing.append("title")
+        confidence = data.get("confidence") or ("high" if not missing else "medium")
+        if confidence != "high" and "I'm not fully sure" not in " ".join(warnings):
+            warnings.append("I'm not fully sure about this. Please review before adding.")
+        if _MEDICAL_RE.search(raw_text) and not any("medical" in w.lower() for w in warnings):
+            warnings.append(
+                "This sounds like a health-related appointment. MemoryMate will not give medical advice — "
+                "please review the details before saving."
+            )
+        return {"draft": draft, "confidence": confidence, "missing_fields": missing,
+                "warnings": warnings, "ai_used": True}
+    except Exception as e:
+        print(f"[ai.draft_calendar_event] failed: {e}")
+        out = parse_calendar_event_rules(raw_text, today)
+        out["warnings"].append("AI parsing had trouble. A basic draft was created — please review.")
+        return out
