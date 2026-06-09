@@ -7,9 +7,11 @@ Pure (no running server / DB) tests for:
   - AI calendar event drafting (rule parser, medical warnings, missing fields).
 """
 import importlib
+import inspect
 from datetime import datetime, timezone
 
 import pytest
+from fastapi import HTTPException
 
 import crypto
 import ai
@@ -115,3 +117,88 @@ class TestCalendarEventDraft:
             assert k in out
         for k in ("title", "date", "time", "end_time", "all_day", "location", "notes", "reminder"):
             assert k in out["draft"]
+
+    def test_draft_start_without_end_frontend_default(self):
+        """Frontend defaults end to start + 1h; rule parser may omit end_time."""
+        out = ai.parse_calendar_event_rules("Dentist tomorrow at 4 PM", self.REF)
+        assert out["draft"]["time"] == "16:00"
+        assert not out["draft"].get("end_time")
+        gcal = importlib.import_module("gcal")
+        _, end = gcal._normalize_event_times(out["draft"]["time"], "", False)
+        assert end == "17:00"
+
+    def test_medical_warning_exact_text(self):
+        out = ai.parse_calendar_event_rules("Doctor visit June 20 at 3 PM", self.REF)
+        assert "Please review health-related details with a caregiver or doctor." in out["warnings"]
+
+    def test_extracts_location_dubai_mall(self):
+        text = "Dentist appointment at Dubai Mall tomorrow at 4 PM, remind me 1 hour before."
+        out = ai.parse_calendar_event_rules(text, self.REF)
+        assert out["draft"]["location"] == "Dubai Mall"
+        assert "dubai mall" not in out["draft"]["title"].lower()
+
+    def test_extracts_multword_location(self):
+        out = ai.parse_calendar_event_rules(
+            "Doctor visit at Mediclinic Dubai Mall on Friday at 3 PM", self.REF)
+        assert out["draft"]["location"] == "Mediclinic Dubai Mall"
+
+    def test_no_location_when_not_mentioned(self):
+        out = ai.parse_calendar_event_rules("Dentist tomorrow at 4 PM", self.REF)
+        assert out["draft"]["location"] == ""
+
+
+class TestEventTimeNormalization:
+    def test_defaults_end_to_one_hour(self):
+        gcal = importlib.import_module("gcal")
+        t, e = gcal._normalize_event_times("16:00", "", False)
+        assert t == "16:00"
+        assert e == "17:00"
+
+    def test_preserves_valid_end_time(self):
+        gcal = importlib.import_module("gcal")
+        t, e = gcal._normalize_event_times("16:00", "18:00", False)
+        assert e == "18:00"
+
+    def test_rejects_end_equal_to_start(self):
+        gcal = importlib.import_module("gcal")
+        with pytest.raises(HTTPException) as exc:
+            gcal._normalize_event_times("16:00", "16:00", False)
+        assert exc.value.status_code == 400
+        assert "after" in exc.value.detail.lower()
+
+    def test_rejects_end_before_start(self):
+        gcal = importlib.import_module("gcal")
+        with pytest.raises(HTTPException) as exc:
+            gcal._normalize_event_times("16:00", "15:00", False)
+        assert exc.value.status_code == 400
+
+    def test_all_day_skips_normalization(self):
+        gcal = importlib.import_module("gcal")
+        t, e = gcal._normalize_event_times("16:00", "", True)
+        assert e == ""
+
+
+class TestGoogleEventLocation:
+    def test_event_body_includes_location_text(self):
+        gcal = importlib.import_module("gcal")
+        event = gcal._build_google_event(
+            "Dentist Appointment", "2026-06-10", "16:00", "17:00",
+            False, "Dubai Mall", "Created from user input", "Asia/Dubai",
+        )
+        assert event["location"] == "Dubai Mall"
+        assert "maps.googleapis.com" not in str(event)
+
+    def test_missing_location_allowed(self):
+        gcal = importlib.import_module("gcal")
+        event = gcal._build_google_event(
+            "Lunch", "2026-06-10", "13:00", "14:00", False, "", "Notes", "UTC",
+        )
+        assert event["location"] == ""
+
+    def test_no_maps_or_places_api_in_gcal(self):
+        gcal = importlib.import_module("gcal")
+        src = inspect.getsource(gcal)
+        assert "maps.googleapis.com/maps/api" not in src
+        assert "places.googleapis.com/v1" not in src
+        assert "google.maps" not in src
+        assert "import googlemaps" not in src
