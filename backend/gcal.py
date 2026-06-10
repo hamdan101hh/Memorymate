@@ -45,6 +45,7 @@ from routes import patient_id_for
 import crypto
 import ai
 import usage
+import calendar_dashboard as caldash
 
 logger = logging.getLogger("memorymate.gcal")
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -366,26 +367,212 @@ async def events(days: int = 14, user: dict = Depends(require_role("caregiver", 
     return [_simplify(e) for e in data.get("items", [])]
 
 
-@router.get("/suggestions")
-async def suggestions(days: int = 30, user: dict = Depends(require_role("caregiver", "admin"))):
-    """Upcoming events the user hasn't imported yet — candidates to approve."""
-    pid = await patient_id_for(user)
-    link = await _connected_link(user)
-    token = await _refresh(link)
+async def _hidden_map(pid: str) -> dict[str, dict]:
+    rows = await db.calendar_suggestion_state.find({"patient_id": pid}, PROJ).to_list(2000)
+    out: dict[str, dict] = {}
+    for row in rows:
+        if row.get("google_event_id"):
+            out[row["google_event_id"]] = row
+        if row.get("fingerprint"):
+            out[row["fingerprint"]] = row
+    return out
+
+
+async def _fetch_upcoming_google(token: str, days: int) -> list[dict]:
     days = max(1, min(days, 90))
     now = datetime.now(timezone.utc)
     data = await _cal_get(token, {
         "timeMin": now.isoformat(), "timeMax": (now + timedelta(days=days)).isoformat(),
         "singleEvents": "true", "orderBy": "startTime", "maxResults": 50,
     })
-    imported = {a.get("google_event_id") for a in
-                await db.appointments.find({"patient_id": pid, "google_event_id": {"$exists": True}}, PROJ).to_list(500)}
-    out = []
-    for e in data.get("items", []):
-        s = _simplify(e)
-        if s["google_event_id"] not in imported:
-            out.append(s)
-    return out
+    return [_simplify(e) for e in data.get("items", [])]
+
+
+async def _dashboard_payload(
+    pid: str, token: str, days: int, include_hidden: bool, user: dict,
+) -> dict:
+    tz = await _resolve_tz(pid, user)
+    ref = datetime.now(ZoneInfo(tz)).date()
+    google_raw = await _fetch_upcoming_google(token, days)
+    appointments = await db.appointments.find({"patient_id": pid}, PROJ).to_list(500)
+    hidden_map = await _hidden_map(pid)
+    return caldash.build_dashboard(
+        google_raw, appointments, hidden_map, ref, include_hidden=include_hidden,
+    )
+
+
+@router.get("/overview")
+async def overview(days: int = 30, user: dict = Depends(require_role("caregiver", "admin"))):
+    """Summary counts for the calendar dashboard (no tokens)."""
+    pid = await patient_id_for(user)
+    link = await _connected_link(user)
+    token = await _refresh(link)
+    payload = await _dashboard_payload(pid, token, days, False, user)
+    return payload["summary"]
+
+
+@router.get("/suggestions")
+async def suggestions(
+    days: int = 30,
+    include_hidden: bool = False,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    """Grouped calendar suggestions, duplicates, and MemoryMate items for the dashboard."""
+    pid = await patient_id_for(user)
+    link = await _connected_link(user)
+    token = await _refresh(link)
+    return await _dashboard_payload(pid, token, days, include_hidden, user)
+
+
+class SuggestionHideBody(BaseModel):
+    google_event_id: str | None = None
+    fingerprint: str | None = None
+    reason: str = "hidden"  # hidden | already_handled | duplicate | not_duplicate
+
+
+@router.post("/suggestions/hide")
+async def hide_suggestion(body: SuggestionHideBody, user: dict = Depends(require_role("caregiver", "admin"))):
+    """Hide or mark a suggestion — stored by google_event_id or fingerprint."""
+    if not body.google_event_id and not body.fingerprint:
+        raise HTTPException(status_code=400, detail="google_event_id or fingerprint is required.")
+    reason = (body.reason or "hidden").strip().lower()
+    status_map = {
+        "hidden": "hidden",
+        "already_handled": "handled",
+        "handled": "handled",
+        "duplicate": "duplicate",
+        "not_duplicate": "not_duplicate",
+    }
+    status = status_map.get(reason, "hidden")
+    pid = await patient_id_for(user)
+    fp = (body.fingerprint or "").strip()
+    gid = (body.google_event_id or "").strip() or None
+    doc = {
+        "patient_id": pid,
+        "google_event_id": gid,
+        "fingerprint": fp or (f"gid:{gid}" if gid else ""),
+        "status": status,
+        "reason": reason,
+        "updated_at": NOW(),
+    }
+    filt: dict = {"patient_id": pid}
+    if gid:
+        filt["google_event_id"] = gid
+    elif fp:
+        filt["fingerprint"] = fp
+    else:
+        raise HTTPException(status_code=400, detail="google_event_id or fingerprint is required.")
+    await db.calendar_suggestion_state.update_one(
+        filt,
+        {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": NOW()}},
+        upsert=True,
+    )
+    if status == "hidden":
+        await _activity(pid, user["id"], "hidden_suggestion", fp or gid or "")
+    elif status == "handled":
+        await _activity(pid, user["id"], "handled_suggestion", fp or gid or "")
+    return {"ok": True, "status": status}
+
+
+class AppointmentArchiveBody(BaseModel):
+    appointment_id: str
+    archive: bool = True
+
+
+@router.post("/appointments/archive")
+async def archive_appointment(body: AppointmentArchiveBody, user: dict = Depends(require_role("caregiver", "admin"))):
+    """Hide a MemoryMate appointment from the Google add list (does not delete Google events)."""
+    pid = await patient_id_for(user)
+    appt = await db.appointments.find_one({"id": body.appointment_id, "patient_id": pid}, PROJ)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    if appt.get("google_event_id") and body.archive:
+        raise HTTPException(
+            status_code=400,
+            detail="This appointment is already on Google Calendar. Archiving only hides MemoryMate-only items.",
+        )
+    await db.appointments.update_one(
+        {"id": body.appointment_id},
+        {"$set": {"calendar_archived": bool(body.archive), "calendar_archived_at": NOW()}},
+    )
+    if body.archive:
+        await _activity(pid, user["id"], "archived_appointment", appt.get("title", ""))
+    return {"ok": True, "calendar_archived": bool(body.archive)}
+
+
+class CheckDuplicateBody(BaseModel):
+    appointment_id: str | None = None
+    title: str | None = None
+    date: str | None = None
+    time: str | None = None
+    location: str | None = ""
+
+
+@router.post("/check-duplicate")
+async def check_duplicate(body: CheckDuplicateBody, user: dict = Depends(require_role("caregiver", "admin"))):
+    """Check whether adding an appointment may duplicate an existing calendar event."""
+    pid = await patient_id_for(user)
+    if body.appointment_id:
+        appt = await db.appointments.find_one({"id": body.appointment_id, "patient_id": pid}, PROJ)
+        if not appt:
+            raise HTTPException(status_code=404, detail="Appointment not found.")
+        candidate = {
+            "title": appt.get("title"),
+            "date": appt.get("date"),
+            "time": appt.get("time"),
+            "location": appt.get("location", ""),
+            "google_event_id": appt.get("google_event_id"),
+        }
+    else:
+        candidate = {
+            "title": body.title,
+            "date": _normalize_date_iso(body.date) if body.date else "",
+            "time": body.time or "",
+            "location": body.location or "",
+        }
+    if not candidate.get("title") or not candidate.get("date"):
+        raise HTTPException(status_code=400, detail="Title and date are required.")
+    link = await _connected_link(user)
+    token = await _refresh(link)
+    google_raw = await _fetch_upcoming_google(token, 30)
+    appointments = await db.appointments.find({"patient_id": pid}, PROJ).to_list(500)
+    google_pool = []
+    for ev in google_raw:
+        d, t = caldash.split_start(ev.get("start", ""))
+        google_pool.append({
+            **ev, "date": d, "time": t,
+            "fingerprint": caldash.event_fingerprint(ev.get("title", ""), d, t, ev.get("location", "")),
+        })
+    appt_pool = []
+    for a in appointments:
+        if body.appointment_id and a.get("id") == body.appointment_id:
+            continue
+        appt_pool.append({
+            "appointment_id": a.get("id"),
+            "google_event_id": a.get("google_event_id"),
+            "title": a.get("title"),
+            "date": a.get("date"),
+            "time": a.get("time"),
+            "location": a.get("location", ""),
+            "fingerprint": caldash.event_fingerprint(
+                a.get("title", ""), a.get("date", ""), a.get("time", ""), a.get("location", ""),
+            ),
+        })
+    matches = caldash.find_duplicate_matches(candidate, google_pool, appt_pool)
+    return {
+        "duplicate_risk": len(matches) > 0,
+        "matches": [
+            {
+                "title": m.get("title"),
+                "date": m.get("date"),
+                "time": m.get("time"),
+                "location": m.get("location", ""),
+                "google_event_id": m.get("google_event_id"),
+                "appointment_id": m.get("appointment_id"),
+            }
+            for m in matches
+        ],
+    }
 
 
 # ---------------- import (calendar -> MemoryMate, after approval) ----------------
@@ -568,6 +755,7 @@ class AddEventBody(BaseModel):
     online_meeting: bool = False
     meeting_provider: str | None = None  # google_meet
     attendees: list[str] | None = None
+    ignore_duplicate_warning: bool = False
 
 
 @router.post("/add-event")
@@ -602,6 +790,25 @@ async def add_event(body: AddEventBody, user: dict = Depends(require_role("careg
         raise HTTPException(status_code=400, detail="Please set a start time or mark the event as all-day.")
     if not all_day and time:
         time, end_time = _normalize_event_times(time, end_time or "", all_day)
+
+    if not body.ignore_duplicate_warning:
+        dup_body = CheckDuplicateBody(
+            appointment_id=body.appointment_id,
+            title=title if not body.appointment_id else None,
+            date=date if not body.appointment_id else None,
+            time=time if not body.appointment_id else None,
+            location=location if not body.appointment_id else None,
+        )
+        dup = await check_duplicate(dup_body, user)
+        if dup.get("duplicate_risk"):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "This looks similar to an existing calendar event.",
+                    "duplicate_risk": True,
+                    "matches": dup.get("matches", []),
+                },
+            )
 
     attendees = _normalize_attendees(body.attendees if not body.appointment_id else None)
     want_meet = bool(body.online_meeting and body.meeting_provider == "google_meet" and not all_day)

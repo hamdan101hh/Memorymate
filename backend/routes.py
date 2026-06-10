@@ -312,6 +312,31 @@ async def create_appointment(body: AppointmentCreate, user: dict = Depends(requi
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
+class AppointmentUpdate(BaseModel):
+    title: Optional[str] = None
+    doctor_or_clinic: Optional[str] = None
+    date: Optional[str] = None
+    time: Optional[str] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.patch("/appointments/{aid}")
+async def update_appointment(aid: str, body: AppointmentUpdate, user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+    result = await db.appointments.update_one(
+        {"id": aid, "patient_id": pid},
+        {"$set": updates},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    doc = await db.appointments.find_one({"id": aid, "patient_id": pid}, PROJ)
+    return doc
+
+
 @router.delete("/appointments/{aid}")
 async def delete_appointment(aid: str, user: dict = Depends(require_role("caregiver", "admin"))):
     pid = await patient_id_for(user)

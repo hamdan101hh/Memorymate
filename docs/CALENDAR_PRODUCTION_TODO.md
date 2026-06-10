@@ -6,6 +6,26 @@ Branch history: `cursor/google-calendar-connector` (feature) →
 The connector is privacy-first and approval-gated. This file tracks what's been
 hardened and what still needs operator setup before real users connect.
 
+## Calendar dashboard clutter — root cause (June 2026)
+
+When `/caregiver/calendar` looked overloaded with repeated cards, investigation showed:
+
+- **Google Calendar suggestions were not the main issue.** The suggestions API
+  already excluded imported `google_event_id`s; typical dev accounts had only a
+  handful of unimported Google events (often one).
+- **The clutter came from many duplicate MemoryMate-only appointments** — rows in
+  `appointments` **without** `google_event_id`. The page listed every such row as a
+  full-width “Add to Google Calendar” card with no deduplication or hide/archive.
+- **Repeated smoke tests created duplicate rows** — manual `add-event`, AI draft
+  flows, and capture pipelines each inserted new appointment documents (e.g. many
+  copies of “Doctor Appointment Tomorrow” / “Follow-up Call with Fadi”) instead of
+  reusing one record.
+
+The dashboard cleanup pass (`cursor/calendar-dashboard-dedup-cleanup`) groups by
+date, fingerprints events, surfaces “Possible duplicates”, and lets caregivers
+hide/handled suggestions or archive MemoryMate-only items from this list — without
+deleting Google Calendar events.
+
 ## Done in the hardening pass
 
 - [x] **Encrypt Google OAuth tokens at rest.**
@@ -30,6 +50,14 @@ hardened and what still needs operator setup before real users connect.
       private event bodies — only action + title/email + time), shown as
       "Recent Calendar Activity" on the connector page. Tracks: connected,
       disconnected, imported, added, reconnect-needed.
+
+- [x] **Calendar dashboard dedup & cleanup** (branch `cursor/calendar-dashboard-dedup-cleanup`).
+      Overview summary, grouped/collapsible suggestions, duplicate detection
+      (fingerprint + title/date/time), hide/handled/archive for MemoryMate-only
+      items, duplicate warning before add-to-Google. Endpoints:
+      `GET /overview`, enhanced `GET /suggestions`, `POST /suggestions/hide`,
+      `POST /check-duplicate`, `POST /appointments/archive`, `PATCH /appointments/{id}`.
+      Archive/hide does **not** delete Google events; no Google edit/delete APIs added.
 
 ## Operator setup required before real users (production checklist)
 
