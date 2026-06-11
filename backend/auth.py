@@ -219,15 +219,26 @@ async def demo_login(body: DemoLoginRequest):
     return {"token": token, "user": await _public_user(user["id"])}
 
 
+MEMORYMATE_PURPOSES = frozenset({
+    "self", "busy_schedule", "family_support", "extra_support", "caregiver", "unsure",
+})
+
+
 class OnboardingRequest(BaseModel):
     consent_accepted: Optional[bool] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     onboarding_completed: Optional[bool] = None
+    memorymate_purpose: Optional[str] = None
 
 
 @router.patch("/onboarding")
 async def update_onboarding(body: OnboardingRequest, user: dict = Depends(get_current_user)):
+    if body.memorymate_purpose is not None and body.memorymate_purpose not in MEMORYMATE_PURPOSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid purpose. Choose one of: {', '.join(sorted(MEMORYMATE_PURPOSES))}.",
+        )
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if update:

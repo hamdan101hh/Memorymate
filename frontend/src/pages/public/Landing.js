@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
 import { Logo, Disclaimer, LEGAL_LINKS, SUPPORT_EMAIL } from "../../components/common";
+import { COST_LINE, PRODUCT_SAFETY_LINE } from "../../lib/purposeConfig";
 import { Button } from "../../components/ui/button";
 import {
-  Mic, Sparkles, Bell, Users, MapPin, ShieldCheck, HeartHandshake,
-  Pill, CalendarClock, ArrowRight, Phone, Check,
+  Mic, Sparkles, Bell, Users, ShieldCheck, HeartHandshake,
+  CalendarClock, ArrowRight, Check,
 } from "lucide-react";
 
 const HERO_IMG =
@@ -32,39 +33,47 @@ function Nav() {
 }
 
 const STEPS = [
-  { n: "1", t: "Record or type a memory", d: "Speak or write what happened during the day — visitors, tasks, appointments." },
-  { n: "2", t: "AI creates a simple summary", d: "MemoryMate turns it into a gentle, easy-to-read summary." },
-  { n: "3", t: "Reminders & details are saved", d: "People, places, medication and appointments are organized for you." },
-  { n: "4", t: "Caregivers stay updated", d: "Family can follow along and add notes, reminders and care details." },
+  { n: "1", t: "Capture a moment or task", d: "Speak or type what happened — a meeting, reminder, or memory worth keeping." },
+  { n: "2", t: "Get a simple summary", d: "MemoryMate turns it into a calm, easy-to-read note you can review." },
+  { n: "3", t: "Stay organized", d: "Appointments, reminders, people, and places stay in one place." },
+  { n: "4", t: "Share with people you trust", d: "Family supporters can help coordinate — always with your control." },
 ];
 
 const FEATURES = [
-  { icon: CalendarClock, t: "Daily memory timeline", d: "Morning, afternoon and evening, gently organized." },
-  { icon: Sparkles, t: "AI summaries", d: "Simple, calm summaries of each memory." },
-  { icon: Pill, t: "Medication reminders", d: "Caregivers add schedules, confirmed with a doctor." },
-  { icon: Users, t: "Caregiver dashboard", d: "A clean view of everything that matters." },
-  { icon: MapPin, t: "Important people & places", d: "Recognize family and familiar locations." },
-  { icon: Phone, t: "Emergency contact", d: "One tap to reach a trusted person." },
+  { icon: SunIcon, t: "Remember your day", d: "Gentle summaries and reminders for what matters today." },
+  { icon: CalendarClock, t: "Organize appointments", d: "Track visits, meetings, and follow-ups with optional Google Calendar." },
+  { icon: Mic, t: "Capture important moments", d: "Record memories and notes when you want — pause anytime." },
+  { icon: HeartHandshake, t: "Support someone you care about", d: "Help a family member stay organized with shared reminders." },
+  { icon: Users, t: "Keep family updated", d: "Coordinate with trusted supporters and family circle." },
+  { icon: ShieldCheck, t: "Stay in control of privacy", d: "Review before sharing. Consent-based capture." },
 ];
+
+function SunIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={props.className}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
 
 export default function Landing() {
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900">
       <Nav />
 
-      {/* Hero */}
       <section className="max-w-6xl mx-auto px-5 pt-12 pb-16 md:pt-20 md:pb-24 grid md:grid-cols-2 gap-12 items-center">
         <div className="mm-fade-up">
           <span className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 bg-sky-100 px-3 py-1.5 rounded-full">
-            <HeartHandshake className="w-4 h-4" /> Helping families remember, care, and stay connected
+            <Sparkles className="w-4 h-4" /> Daily-life memory and organization
           </span>
           <h1 className="mt-5 font-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
-            An AI memory assistant for families and caregivers.
+            MemoryMate helps you remember, organize, and share what matters.
           </h1>
           <p className="mt-5 text-lg sm:text-xl text-stone-600 leading-relaxed max-w-xl">
-            MemoryMate helps organize memories, reminders, medication schedules, appointments,
-            and caregiver notes in one simple app.
+            Simple reminders, appointments, memory notes, and family support — all in one calm place.
           </p>
+          <p className="mt-3 text-sm text-stone-500">{COST_LINE}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/signup">
               <Button size="lg" className="rounded-2xl h-14 px-8 text-base bg-sky-600 hover:bg-sky-700 shadow-md" data-testid="hero-get-started-btn">
@@ -78,27 +87,26 @@ export default function Landing() {
             </Link>
           </div>
           <p className="mt-5 text-sm text-stone-500 flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-600" /> Supportive, not diagnostic — no medical claims.
+            <Check className="w-4 h-4 text-emerald-600" /> Google Calendar optional · AI fallback without paid services required
           </p>
         </div>
         <div className="relative mm-fade-up" style={{ animationDelay: "0.1s" }}>
           <div className="absolute -inset-4 bg-gradient-to-tr from-sky-200/60 to-emerald-200/50 rounded-[2.5rem] blur-2xl" />
-          <img src={HERO_IMG} alt="Caregiver with senior" className="relative rounded-[2rem] shadow-xl w-full object-cover aspect-[4/3]" />
+          <img src={HERO_IMG} alt="Person with family supporter" className="relative rounded-[2rem] shadow-xl w-full object-cover aspect-[4/3]" />
           <div className="absolute -bottom-5 -left-3 bg-white rounded-2xl shadow-lg border border-stone-100 p-4 flex items-center gap-3 max-w-[230px]">
             <span className="grid place-items-center w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700"><Bell className="w-5 h-5" /></span>
             <div>
-              <p className="text-sm font-semibold leading-tight">Take morning medicine</p>
-              <p className="text-xs text-stone-500">Today · 9:00 AM</p>
+              <p className="text-sm font-semibold leading-tight">Team meeting</p>
+              <p className="text-xs text-stone-500">Today · 2:00 PM</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* How it works */}
       <section id="how" className="bg-white border-y border-stone-200 py-20">
         <div className="max-w-6xl mx-auto px-5">
           <h2 className="font-heading text-3xl sm:text-4xl font-bold text-center">How it works</h2>
-          <p className="text-center text-stone-600 mt-3 max-w-2xl mx-auto">Four gentle steps from a spoken memory to an organized, shared care record.</p>
+          <p className="text-center text-stone-600 mt-3 max-w-2xl mx-auto">Four simple steps from a note or memory to an organized day.</p>
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {STEPS.map((s) => (
               <div key={s.n} className="rounded-2xl border border-stone-200 p-6 hover:border-sky-300 hover:shadow-md transition-all">
@@ -111,7 +119,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Features */}
       <section id="features" className="py-20 max-w-6xl mx-auto px-5">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div>
@@ -119,7 +126,7 @@ export default function Landing() {
           </div>
           <div>
             <h2 className="font-heading text-3xl sm:text-4xl font-bold">Everything in one calm place</h2>
-            <p className="mt-3 text-stone-600">Designed to be simple for the person using it, and reassuring for the family caring for them.</p>
+            <p className="mt-3 text-stone-600">For yourself, a busy schedule, family coordination, or extra day-to-day support.</p>
             <div className="mt-8 grid sm:grid-cols-2 gap-5">
               {FEATURES.map((f) => (
                 <div key={f.t} className="flex gap-3">
@@ -135,23 +142,18 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Safety */}
       <section id="safety" className="bg-stone-900 text-white py-20">
         <div className="max-w-3xl mx-auto px-5 text-center">
           <span className="grid place-items-center w-14 h-14 rounded-2xl bg-white/10 mx-auto"><ShieldCheck className="w-7 h-7" /></span>
-          <h2 className="font-heading text-3xl sm:text-4xl font-bold mt-6">Supportive, not diagnostic.</h2>
-          <p className="mt-4 text-stone-300 leading-relaxed">
-            MemoryMate is not a medical device. It helps organize memories, reminders, and caregiver support.
-            It does not diagnose, treat, cure, or replace professional medical advice, emergency services, or clinical care.
-          </p>
+          <h2 className="font-heading text-3xl sm:text-4xl font-bold mt-6">Daily-life support, clearly stated.</h2>
+          <p className="mt-4 text-stone-300 leading-relaxed">{PRODUCT_SAFETY_LINE}</p>
           <Link to="/safety"><Button variant="outline" className="mt-7 rounded-xl border-white/30 bg-transparent text-white hover:bg-white/10">Read our safety commitment</Button></Link>
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-20 max-w-4xl mx-auto px-5 text-center">
-        <h2 className="font-heading text-3xl sm:text-4xl font-bold">Start organizing care with MemoryMate.</h2>
-        <p className="mt-3 text-stone-600">Create a free account for yourself or for someone you care for.</p>
+        <h2 className="font-heading text-3xl sm:text-4xl font-bold">Start simple with MemoryMate.</h2>
+        <p className="mt-3 text-stone-600">Create a free account for yourself or to support someone you care about.</p>
         <Link to="/signup">
           <Button size="lg" className="mt-7 rounded-2xl h-14 px-8 bg-sky-600 hover:bg-sky-700 shadow-md" data-testid="cta-get-started-btn">
             Get Started <ArrowRight className="w-5 h-5 ml-1" />
@@ -164,7 +166,7 @@ export default function Landing() {
           <div className="flex flex-col md:flex-row justify-between gap-6">
             <div className="max-w-sm">
               <Logo />
-              <p className="mt-3 text-sm text-stone-500">Helping families remember, care, and stay connected.</p>
+              <p className="mt-3 text-sm text-stone-500">Remember, organize, and share what matters — calmly.</p>
             </div>
             <div className="flex gap-10 text-sm">
               <div className="flex flex-col gap-2">

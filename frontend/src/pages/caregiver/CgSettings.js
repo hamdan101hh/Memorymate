@@ -6,11 +6,13 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
+import PurposeSettingsCard from "../../components/PurposeSettingsCard";
+import { COST_LINE } from "../../lib/purposeConfig";
 import { ShieldCheck, Save, Loader2, ScrollText, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CgSettings() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [patient, setPatient] = useState(null);
   const [form, setForm] = useState({ full_name: "", age: "", emergency_contact_name: "", emergency_contact_phone: "", notes: "" });
   const [saving, setSaving] = useState(false);
@@ -31,7 +33,7 @@ export default function CgSettings() {
     setSaving(true);
     try {
       await api.patch("/patient", { ...form, age: form.age ? Number(form.age) : null });
-      toast.success("Patient details saved");
+      toast.success("Details saved");
     } catch { toast.error("Could not save"); } finally { setSaving(false); }
   };
 
@@ -42,10 +44,13 @@ export default function CgSettings() {
       <div className="bg-white border border-stone-200 rounded-xl p-6 mb-5">
         <h2 className="font-semibold mb-1">Your account</h2>
         <p className="text-sm text-stone-500">{user?.full_name} · {user?.email}</p>
+        <p className="text-xs text-stone-400 mt-2">{COST_LINE}</p>
       </div>
 
+      <PurposeSettingsCard user={user} refreshUser={refreshUser} />
+
       <div className="bg-white border border-stone-200 rounded-xl p-6 mb-5">
-        <h2 className="font-semibold mb-4">Patient details</h2>
+        <h2 className="font-semibold mb-4">Supported person details</h2>
         {!patient ? <Loader2 className="w-5 h-5 animate-spin text-stone-400" /> : (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
