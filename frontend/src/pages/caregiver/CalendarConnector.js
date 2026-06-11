@@ -132,6 +132,7 @@ export default function CalendarConnector() {
   const [filter, setFilter] = useState("all");
   const [showHidden, setShowHidden] = useState(false);
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState(() =>
     Object.fromEntries(Object.entries(GROUP_META).map(([k, v]) => [k, v.defaultOpen])),
   );
@@ -263,6 +264,20 @@ export default function CalendarConnector() {
     } finally { setBusy(""); }
   };
 
+  const cleanupClutter = async () => {
+    setBusy("cleanup");
+    try {
+      const { data } = await api.post("/calendar/cleanup-clutter");
+      toast.success(data.message || "Clutter cleaned");
+      setCleanupOpen(false);
+      loadData();
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || "Could not clean up");
+    } finally {
+      setBusy("");
+    }
+  };
+
   const addToCalendar = async (ignoreDuplicate = false) => {
     const appt = dupWarning?.appt || confirm;
     if (!appt) return;
@@ -335,19 +350,38 @@ export default function CalendarConnector() {
 
   return (
     <div data-testid="cg-calendar-page">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="font-heading text-2xl sm:text-3xl font-bold flex items-center gap-2">
-          <CalendarDays className="w-7 h-7 text-sky-600" /> Google Calendar
-        </h1>
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
+        <div className="min-w-0">
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold flex items-center gap-2">
+            <CalendarDays className="w-7 h-7 text-sky-600 shrink-0" /> Google Calendar
+          </h1>
+          {status.connected && status.email && (
+            <p className="text-sm text-emerald-700 mt-1 font-medium" data-testid="cal-connected-email">{status.email}</p>
+          )}
+          {!status.connected && (
+            <p className="text-sm text-stone-500 mt-1">Connect to import and add events with your approval.</p>
+          )}
+        </div>
+        {status.connected && summary && (
+          <div className="rounded-xl border border-stone-200 bg-white p-3 shrink-0 min-w-[220px]" data-testid="cal-overview-compact">
+            <p className="text-xs font-semibold text-stone-500 mb-2">Overview</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <span>Today <strong>{summary.today_count ?? 0}</strong></span>
+              <span>This week <strong>{summary.week_count ?? 0}</strong></span>
+              <span>New <strong>{summary.new_suggestions ?? 0}</strong></span>
+              <span>Duplicates <strong>{summary.possible_duplicates ?? 0}</strong></span>
+              {(summary.hidden_count > 0) && (
+                <span className="col-span-2 text-stone-500">Hidden/junk: {summary.hidden_count}</span>
+              )}
+            </div>
+          </div>
+        )}
         {status.connected && (
-          <Button variant="outline" size="sm" className="rounded-xl" onClick={loadData} data-testid="cal-refresh">
+          <Button variant="outline" size="sm" className="rounded-xl shrink-0 self-start" onClick={loadData} data-testid="cal-refresh">
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
           </Button>
         )}
       </div>
-      <p className="text-stone-600 mb-5 text-sm">
-        A summarized calendar dashboard. Import suggestions, add appointments to Google, and hide repeats — nothing syncs without your approval.
-      </p>
 
       {!status.configured && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-5 flex items-start gap-3" data-testid="cal-not-configured">
@@ -384,34 +418,31 @@ export default function CalendarConnector() {
 
       {status.connected && (
         <>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 mb-4 flex items-center gap-3" data-testid="cal-connected">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-emerald-800">Connected{status.email ? ` · ${status.email}` : ""}</p>
-              <p className="text-sm text-stone-600">Reading is permission-based. Nothing changes without approval.</p>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 mb-4 flex flex-wrap items-center justify-between gap-3" data-testid="cal-connected">
+            <div className="flex items-center gap-2 text-sm text-emerald-800">
+              <CheckCircle2 className="w-5 h-5 shrink-0" />
+              <span>Connected — nothing changes without your approval.</span>
             </div>
             <Button variant="outline" size="sm" onClick={disconnect} disabled={busy === "disconnect"} className="rounded-xl shrink-0">
               <Unlink className="w-4 h-4 mr-1" /> Disconnect
             </Button>
           </div>
 
-          {/* Overview */}
           {dashboard === null ? (
-            <div className="grid place-items-center py-8 mb-4"><Loader2 className="w-6 h-6 animate-spin text-sky-600" /></div>
-          ) : (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 mb-4" data-testid="cal-overview">
-              <h2 className="font-heading font-semibold text-sky-900 mb-1">Calendar overview</h2>
-              <p className="text-sm text-stone-700">{summary?.summary_text || "Loading summary…"}</p>
-              <div className="flex flex-wrap gap-3 mt-3 text-xs text-stone-600">
-                <span>Today: {summary?.today_count ?? 0}</span>
-                <span>This week: {summary?.week_count ?? 0}</span>
-                <span>New: {summary?.new_suggestions ?? 0}</span>
-                <span>Duplicates: {summary?.possible_duplicates ?? 0}</span>
-                <span>Not on Google: {summary?.not_on_google_count ?? 0}</span>
-                {summary?.hidden_count > 0 && <span>Hidden: {summary.hidden_count}</span>}
-              </div>
-            </div>
+            <div className="grid place-items-center py-6 mb-4"><Loader2 className="w-6 h-6 animate-spin text-sky-600" /></div>
+          ) : summary?.summary_text && (
+            <p className="text-sm text-stone-600 mb-4">{summary.summary_text}</p>
           )}
+
+          <div className="rounded-xl border border-stone-200 bg-white p-4 mb-4 flex flex-wrap items-center justify-between gap-3" data-testid="cal-cleanup-card">
+            <div>
+              <p className="font-medium text-sm">Clean up clutter</p>
+              <p className="text-xs text-stone-500">Hide repeated suggestions and archive duplicate MemoryMate rows.</p>
+            </div>
+            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setCleanupOpen(true)} data-testid="cal-cleanup-btn">
+              Clean up clutter
+            </Button>
+          </div>
 
           <CreateEventWithAI connected onSuccess={loadData} />
 
@@ -644,6 +675,23 @@ export default function CalendarConnector() {
             <Button variant="outline" className="rounded-xl" onClick={() => setDupWarning(null)}>Cancel</Button>
             <Button className="rounded-xl bg-amber-600 hover:bg-amber-700" onClick={() => addToCalendar(true)} disabled={busy}>
               Add anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cleanupOpen} onOpenChange={setCleanupOpen}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Clean up clutter?</DialogTitle>
+            <DialogDescription>
+              This will hide repeated suggestions and archive duplicate MemoryMate-only appointments. It will not delete Google Calendar events.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl" onClick={() => setCleanupOpen(false)}>Cancel</Button>
+            <Button className="rounded-xl bg-sky-600 hover:bg-sky-700" onClick={cleanupClutter} disabled={busy === "cleanup"} data-testid="cal-cleanup-confirm">
+              {busy === "cleanup" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Clean up clutter"}
             </Button>
           </DialogFooter>
         </DialogContent>

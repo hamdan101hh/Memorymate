@@ -7,6 +7,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import PurposeSettingsCard from "../../components/PurposeSettingsCard";
+import WhoopConnectorCard from "../../components/caregiver/WhoopConnectorCard";
 import { COST_LINE } from "../../lib/purposeConfig";
 import { ShieldCheck, Save, Loader2, ScrollText, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
@@ -48,6 +49,8 @@ export default function CgSettings() {
       </div>
 
       <PurposeSettingsCard user={user} refreshUser={refreshUser} />
+
+      <WhoopConnectorCard />
 
       <div className="bg-white border border-stone-200 rounded-xl p-6 mb-5">
         <h2 className="font-semibold mb-4">Supported person details</h2>

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import MvpDisclaimer from "../../components/caregiver/MvpDisclaimer";
+import SuccessCheck, { CopyDetailsButton, OpenCalendarButton, CreateAnotherButton } from "../../components/mvp/SuccessCheck";
 
 const EMPTY_DRAFT = {
   title: "", date: "", time: "", end_time: "", all_day: false,
@@ -708,11 +709,26 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
       </Dialog>
 
       {phase === "success" && successResult && (
-        <div className="bg-white border border-emerald-200 rounded-2xl p-5 mb-4 space-y-4" data-testid="cal-ai-success-share">
-          <h3 className="font-heading font-semibold text-lg flex items-center gap-2 text-emerald-800">
-            <ShieldCheck className="w-5 h-5" />
-            {successResult.memorymate_only ? "Saved to MemoryMate" : "Event added to Google Calendar"}
-          </h3>
+        <div className="mb-4 space-y-4" data-testid="cal-ai-success-share">
+          <SuccessCheck
+            title="Success"
+            message={
+              successResult.memorymate_only
+                ? "Appointment saved to MemoryMate."
+                : successResult.meeting_link
+                  ? "Added to Google Calendar. Meeting link created."
+                  : "Added to Google Calendar."
+            }
+            testId="cal-ai-success-check"
+            actions={
+              <>
+                <OpenCalendarButton href={successResult.html_link} />
+                <CopyDetailsButton text={shareText} testId="cal-ai-copy-details-top" />
+                <CreateAnotherButton onClick={reset} />
+              </>
+            }
+          />
+          <div className="bg-white border border-stone-200 rounded-2xl p-5 space-y-4">
           {successResult.meeting_link && (
             <p className="text-sm">
               <span className="text-stone-500">Meeting link:</span>{" "}
@@ -772,6 +788,7 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
                 Connect Google Calendar to create a Google event or Meet link.
               </p>
             )}
+          </div>
           </div>
           <Button onClick={reset} className="rounded-xl" data-testid="cal-ai-done">Done</Button>
         </div>

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import CreateAppointmentWithAI from "./CreateAppointmentWithAI";
+import MeetingLocationNote from "../../components/caregiver/MeetingLocationNote";
 
 const empty = {
   title: "", doctor_or_clinic: "", date: "", time: "", location: "",
@@ -66,7 +67,7 @@ function fmtWhen(a) {
   return parts.join(" · ") || "No date set";
 }
 
-function ApptCard({ item, onComplete, onArchive, onEdit, onAddGoogle, onKeepDuplicate, onMarkNotDup, busy }) {
+function ApptCard({ item, onComplete, onArchive, onEdit, onAddGoogle, onKeepDuplicate, onMarkNotDup, onMeetingSaved, busy }) {
   const border = URGENCY_BORDER[item.urgency_style] || URGENCY_BORDER.upcoming;
   const badgeCls = URGENCY_BADGE[item.urgency_badge] || URGENCY_BADGE.Upcoming;
   const isDup = item.duplicate_role === "duplicate";
@@ -101,15 +102,16 @@ function ApptCard({ item, onComplete, onArchive, onEdit, onAddGoogle, onKeepDupl
           </p>
         )}
       </div>
-      <div className="flex items-start gap-1 shrink-0">
+      <div className="flex flex-col items-end gap-1 shrink-0">
         {!isDup && item.urgency !== "past" && (
           <Button size="sm" variant="outline" className="rounded-lg text-xs h-8" onClick={() => onComplete(item)} disabled={busy === item.id}>
             <Check className="w-3.5 h-3.5 mr-1" /> Done
           </Button>
         )}
+        {!isDup && <MeetingLocationNote appointment={item} onSaved={onMeetingSaved} />}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" data-testid="appt-menu">
+            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" data-testid="appt-menu" aria-label="More actions">
               <MoreHorizontal className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -443,6 +445,7 @@ export default function Appointments() {
                       })}
                       onKeepDuplicate={keepDuplicate}
                       onMarkNotDup={markNotDup}
+                      onMeetingSaved={load}
                     />
                   ))}
                 </div>

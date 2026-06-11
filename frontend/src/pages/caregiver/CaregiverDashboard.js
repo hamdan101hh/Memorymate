@@ -1,28 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
-import { getCaregiverDashboardCopy, getCaregiverQuickActionKeys } from "../../lib/purposeConfig";
+import { getCaregiverDashboardCopy } from "../../lib/purposeConfig";
 import { Button } from "../../components/ui/button";
 import NotificationPermissionPrompt from "../../components/NotificationPermissionPrompt";
+import QuickNoteCard from "../../components/caregiver/QuickNoteCard";
+import MemoryVisualTile from "../../components/caregiver/MemoryVisualTile";
 import {
   PageHeader, SummaryCard, CompactRow, ViewAllLink, LoadingState, MVP_DISCLAIMER, StatusBadge,
 } from "../../components/mvp";
 import {
   CalendarClock, Bell, ShieldQuestion, Sparkles, Loader2, StickyNote, Plus, Radio,
-  CalendarDays, Copy, Users,
+  CalendarDays, Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 
-const QUICK_ACTIONS = {
-  ai: { to: "/caregiver/appointments", icon: Sparkles, label: "Create with AI", key: "ai" },
-  reminder: { to: "/caregiver/reminders", icon: Plus, label: "Add reminder", key: "reminder" },
-  note: { to: "/caregiver/notes", icon: StickyNote, label: "Supporter note", key: "note" },
-  calendar: { to: "/caregiver/calendar", icon: CalendarDays, label: "Open calendar", key: "calendar" },
-  duplicates: { to: "/caregiver/appointments", icon: Copy, label: "Review duplicates", key: "duplicates" },
-  memory: { to: "/caregiver/capture", icon: Radio, label: "Record memory", key: "memory" },
-  people: { to: "/caregiver/people", icon: Users, label: "Important people", key: "people" },
-};
+const TOP_ACTIONS = [
+  { key: "ai", to: "/caregiver/appointments", icon: Sparkles, label: "Create with AI" },
+  { key: "reminder", to: "/caregiver/reminders", icon: Plus, label: "Add reminder" },
+  { key: "quicknote", scroll: "quick-note-card", icon: StickyNote, label: "Add quick note" },
+  { key: "calendar", to: "/caregiver/calendar", icon: CalendarDays, label: "Open calendar" },
+  { key: "duplicates", to: "/caregiver/appointments", icon: Copy, label: "Review duplicates", badgeKey: "dup" },
+  { key: "memory", to: "/caregiver/capture", icon: Radio, label: "Record memory" },
+];
 
 export default function CaregiverDashboard() {
   const { user } = useAuth();
@@ -35,7 +36,7 @@ export default function CaregiverDashboard() {
   const [summary, setSummary] = useState("");
   const [gen, setGen] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     Promise.all([
       api.get("/patient/overview"),
       api.get("/appointments/dashboard"),
@@ -53,6 +54,8 @@ export default function CaregiverDashboard() {
     }).catch(() => toast.error("Could not load dashboard"));
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
   const generate = async () => {
     setGen(true);
     try {
@@ -65,15 +68,18 @@ export default function CaregiverDashboard() {
     }
   };
 
+  const scrollToQuickNote = () => {
+    const el = document.getElementById("quick-note-card");
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const input = el?.querySelector("textarea");
+    input?.focus();
+  };
+
   const dashCopy = getCaregiverDashboardCopy(user?.memorymate_purpose, user?.role);
-  const quickActions = getCaregiverQuickActionKeys(user?.memorymate_purpose)
-    .map((k) => QUICK_ACTIONS[k])
-    .filter(Boolean);
 
   if (!ov || !apptDash) return <LoadingState />;
 
   const supportedName = ov.patient?.full_name || "the person you support";
-
   const today = new Date().toISOString().slice(0, 10);
   const todayReminders = reminders.filter((r) => r.due_date === today && r.status === "pending");
   const urgentAppts = apptDash.groups?.urgent || [];
@@ -101,26 +107,69 @@ export default function CaregiverDashboard() {
     <div data-testid="caregiver-dashboard">
       <PageHeader
         title={dashCopy.title}
-        subtitle={`Supporting ${supportedName}. ${dashCopy.subtitle}`}
+        subtitle={`Supporting ${supportedName}`}
         disclaimer={MVP_DISCLAIMER}
         action={
-          <Button onClick={generate} disabled={gen} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="generate-summary-btn">
+          <Button onClick={generate} disabled={gen} variant="outline" className="rounded-xl" data-testid="generate-summary-btn">
             {gen ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            Caregiver summary
+            Summary
           </Button>
         }
       />
 
+      {/* Top: quick note + quick actions */}
+      <div className="grid lg:grid-cols-2 gap-4 mb-4" data-testid="dashboard-top-actions">
+        <div id="quick-note-card">
+          <QuickNoteCard onSaved={load} />
+        </div>
+        <section className="bg-white border border-stone-200 rounded-xl p-4">
+          <h2 className="font-semibold text-sm mb-3">Quick actions</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {TOP_ACTIONS.map((a) => {
+              const badge = a.badgeKey === "dup" ? dupCount : null;
+              if (a.scroll) {
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    onClick={scrollToQuickNote}
+                    className="flex flex-col items-center gap-2 rounded-xl border border-stone-200 p-3 min-h-[72px] hover:border-sky-300 hover:bg-sky-50/50 transition-colors text-center"
+                    data-testid={`quick-action-${a.key}`}
+                  >
+                    <a.icon className="w-5 h-5 text-sky-600" />
+                    <span className="text-xs font-medium leading-tight">{a.label}</span>
+                  </button>
+                );
+              }
+              return (
+                <Link
+                  key={a.key}
+                  to={a.to}
+                  className="flex flex-col items-center gap-2 rounded-xl border border-stone-200 p-3 min-h-[72px] hover:border-sky-300 hover:bg-sky-50/50 transition-colors text-center relative"
+                  data-testid={`quick-action-${a.key}`}
+                >
+                  {badge > 0 && (
+                    <span className="absolute top-2 right-2 text-[10px] bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5">{badge}</span>
+                  )}
+                  <a.icon className="w-5 h-5 text-sky-600" />
+                  <span className="text-xs font-medium leading-tight">{a.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+
       <NotificationPermissionPrompt settingsPath="/caregiver/notifications" />
 
       {summary && (
-        <div className="mb-5 rounded-xl bg-sky-50 border border-sky-200 p-4" data-testid="ai-summary-card">
+        <div className="mb-4 rounded-xl bg-sky-50 border border-sky-200 p-4" data-testid="ai-summary-card">
           <p className="font-semibold text-sky-800 mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4" /> Caregiver summary</p>
           <p className="whitespace-pre-wrap text-stone-700 text-sm leading-relaxed">{summary}</p>
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5" data-testid="today-overview-row">
         <SummaryCard label="Urgent" value={apptDash.summary?.urgent_count || 0} tone="rose" />
         <SummaryCard label="Today" value={(apptDash.summary?.today_count || 0) + todayReminders.length} tone="amber" />
         <SummaryCard label="Needs review" value={needsReview + (apptDash.summary?.needs_review_count || 0)} tone="stone" />
@@ -128,14 +177,9 @@ export default function CaregiverDashboard() {
       </div>
 
       {dupCount > 0 && (
-        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-wrap items-center justify-between gap-3" data-testid="dup-notice">
-          <p className="text-sm text-amber-900">
-            <Copy className="w-4 h-4 inline mr-1" />
-            {dupCount} duplicate appointment{dupCount !== 1 ? "s" : ""} hidden from the main list.
-          </p>
-          <Link to="/caregiver/appointments" className="text-sm font-medium text-sky-700 hover:text-sky-800">
-            Review duplicates →
-          </Link>
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 flex flex-wrap items-center justify-between gap-3 text-sm" data-testid="dup-notice">
+          <span className="text-amber-900">{dupCount} duplicate appointment{dupCount !== 1 ? "s" : ""} hidden.</span>
+          <Link to="/caregiver/appointments" className="font-medium text-sky-700">Review →</Link>
         </div>
       )}
 
@@ -160,7 +204,7 @@ export default function CaregiverDashboard() {
         </section>
 
         <section className="bg-white border border-stone-200 rounded-xl p-4">
-          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-stone-400" /> Upcoming appointments</h2>
+          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-stone-400" /> Upcoming</h2>
           {upcoming.length === 0 ? (
             <p className="text-sm text-stone-400">No upcoming appointments.</p>
           ) : (
@@ -173,64 +217,40 @@ export default function CaregiverDashboard() {
           <ViewAllLink to="/caregiver/appointments" />
         </section>
 
-        <section className="bg-white border border-stone-200 rounded-xl p-4">
+        <section className="bg-white border border-stone-200 rounded-xl p-4 lg:col-span-2">
           <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-stone-400" /> Recent memories</h2>
           {memories.length === 0 ? (
-            <p className="text-sm text-stone-400">No memories yet.</p>
+            <p className="text-sm text-stone-400">No memories yet. Record a memory or add a quick note.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="grid sm:grid-cols-3 gap-3">
               {memories.slice(0, 3).map((m) => (
-                <CompactRow key={m.id} title={m.title} sub={m.simple_summary} />
+                <div key={m.id} className="flex gap-3 rounded-lg border border-stone-100 p-2" data-testid="dashboard-memory-tile">
+                  <MemoryVisualTile memory={m} compact />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm truncate">{m.title}</p>
+                    <p className="text-xs text-stone-500 line-clamp-2">{m.simple_summary}</p>
+                  </div>
+                </div>
               ))}
             </div>
           )}
           <ViewAllLink to="/caregiver/timeline" label="View timeline" />
         </section>
-
-        <section className="bg-white border border-stone-200 rounded-xl p-4">
-          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><ShieldQuestion className="w-4 h-4 text-stone-400" /> Privacy review</h2>
-          {needsReview === 0 ? (
-            <p className="text-sm text-stone-400">Nothing needs review.</p>
-          ) : (
-            <div className="space-y-2">
-              {review.slice(0, 3).map((r) => (
-                <CompactRow key={r.id} title={r.title || "Memory capture"} sub={r.reason || "Pending review"} borderClass="border-l-amber-400" />
-              ))}
-            </div>
-          )}
-          <ViewAllLink to="/caregiver/capture/review" />
-        </section>
       </div>
 
-      <section className="bg-white border border-stone-200 rounded-xl p-4" data-testid="capture-quick-actions">
-        <h2 className="font-semibold text-sm mb-3">Quick actions</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {quickActions.map((a) => (
-            <QuickLink
-              key={a.key}
-              to={a.to}
-              icon={a.icon}
-              label={a.label}
-              badge={a.key === "duplicates" ? dupCount || null : null}
-            />
-          ))}
-        </div>
+      <section className="bg-white border border-stone-200 rounded-xl p-4 mb-2" data-testid="privacy-review-section">
+        <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><ShieldQuestion className="w-4 h-4 text-stone-400" /> Privacy review</h2>
+        {needsReview === 0 ? (
+          <p className="text-sm text-stone-400">Nothing needs review.</p>
+        ) : (
+          <div className="space-y-2">
+            {review.slice(0, 3).map((r) => (
+              <CompactRow key={r.id} title={r.title || "Memory capture"} sub={r.reason || "Pending review"} borderClass="border-l-amber-400" />
+            ))}
+          </div>
+        )}
+        <ViewAllLink to="/caregiver/capture/review" />
       </section>
     </div>
-  );
-}
-
-function QuickLink({ to, icon: Icon, label, badge }) {
-  return (
-    <Link
-      to={to}
-      className="flex flex-col items-center gap-2 rounded-xl border border-stone-200 p-3 text-center hover:border-sky-300 hover:bg-sky-50/50 transition-colors min-h-[88px] relative"
-    >
-      {badge > 0 && (
-        <span className="absolute top-2 right-2 text-[10px] bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5">{badge}</span>
-      )}
-      <Icon className="w-5 h-5 text-sky-600" />
-      <span className="text-xs font-medium leading-tight">{label}</span>
-    </Link>
   );
 }

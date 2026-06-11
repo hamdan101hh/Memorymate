@@ -568,6 +568,70 @@ async def archive_appointment_route(
     return {"ok": True, "calendar_archived": bool(body.archive)}
 
 
+class MeetingContextBody(BaseModel):
+    location_text: str = ""
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    notes: Optional[str] = ""
+    people_present: Optional[str] = ""
+    confirmed: bool = False
+    location_coords: Optional[dict] = None  # {lat, lng} only after user confirms
+
+
+@router.post("/appointments/{appointment_id}/meeting-context")
+async def save_meeting_context(
+    appointment_id: str,
+    body: MeetingContextBody,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    """Save optional location context as a memory linked to an appointment (confirmation required)."""
+    if not body.confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm before saving location context.")
+    pid = await patient_id_for(user)
+    appt = await db.appointments.find_one({"id": appointment_id, "patient_id": pid}, PROJ)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    loc = (body.location_text or "").strip()
+    if body.location_coords and isinstance(body.location_coords, dict):
+        lat, lng = body.location_coords.get("lat"), body.location_coords.get("lng")
+        if lat is not None and lng is not None:
+            loc = loc or f"Coordinates ({lat}, {lng})"
+    parts = [f"Meeting note: {appt.get('title', 'Appointment')}"]
+    if loc:
+        parts.append(f"at {loc}")
+    if body.started_at or body.ended_at:
+        parts.append(f"from {body.started_at or '—'} to {body.ended_at or '—'}")
+    if body.people_present:
+        parts.append(f"with {body.people_present}")
+    if body.notes:
+        parts.append(f"Notes: {body.notes}")
+    transcript = ". ".join(parts)
+    location_payload = None
+    if body.location_coords and body.confirmed:
+        location_payload = {
+            "lat": body.location_coords.get("lat"),
+            "lng": body.location_coords.get("lng"),
+            "label": loc or "Saved location context",
+        }
+    elif loc:
+        location_payload = {"label": loc}
+    memory = await save_memory_for_patient(
+        pid, transcript, title=f"Meeting note: {appt.get('title', '')}",
+        source="meeting_note", location=location_payload,
+        by_user_id=user["id"], by_role=user["role"],
+    )
+    if loc and not appt.get("location"):
+        await db.appointments.update_one(
+            {"id": appointment_id},
+            {"$set": {"location": loc, "updated_at": NOW()}},
+        )
+    await db.memories.update_one(
+        {"id": memory["id"]},
+        {"$set": {"linked_appointment_id": appointment_id}},
+    )
+    return {"ok": True, "memory_id": memory["id"], "message": "Saved location context"}
+
+
 @router.post("/appointments/archive-duplicates")
 async def archive_duplicate_appointments(user: dict = Depends(require_role("caregiver", "admin"))):
     """Archive repeated MemoryMate-only duplicate appointments (never touches Google events)."""
