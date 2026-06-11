@@ -13,6 +13,7 @@ import ai
 import usage
 import appointment_dashboard as apdash
 import appointment_ai
+import duplicate_helpers as duph
 
 router = APIRouter(prefix="/api", tags=["app"])
 
@@ -523,29 +524,11 @@ async def _find_duplicate_appointments(
     pid: str, candidate: dict, exclude_id: str | None = None,
 ) -> list[dict]:
     appointments = await db.appointments.find({"patient_id": pid}, PROJ).to_list(500)
-    matches: list[dict] = []
-    for a in appointments:
-        if a.get("calendar_archived") or a.get("status") == "completed":
-            continue
-        if exclude_id and a.get("id") == exclude_id:
-            continue
-        if apdash.is_appt_duplicate(candidate, a):
-            matches.append(a)
-    return matches
+    return duph.find_duplicate_matches(candidate, appointments, exclude_id)
 
 
 def _serialize_dup_matches(matches: list[dict]) -> list[dict]:
-    return [
-        {
-            "id": m.get("id"),
-            "title": m.get("title"),
-            "date": m.get("date"),
-            "time": m.get("time"),
-            "location": m.get("location", ""),
-            "google_event_id": m.get("google_event_id"),
-        }
-        for m in matches
-    ]
+    return duph.serialize_matches(matches)
 
 
 @router.get("/appointments/dashboard")

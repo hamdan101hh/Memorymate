@@ -14,15 +14,24 @@ export default function DashboardShell({ items, title, children }) {
     <aside className="w-64 shrink-0 bg-white border-r border-stone-200 flex flex-col h-full">
       <div className="h-16 px-5 flex items-center border-b border-stone-100"><Logo to={items[0].to} /></div>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto mm-scrollbar">
-        {items.map((it) => (
-          <NavLink key={it.to} to={it.to} end={it.end} onClick={() => setOpen(false)}
-            data-testid={`nav-${it.label.toLowerCase().replace(/\s+/g, "-")}`}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                isActive ? "bg-sky-50 text-sky-700" : "text-stone-600 hover:bg-stone-50"}`}>
-            <it.icon className="w-5 h-5" /> {it.label}
-          </NavLink>
-        ))}
+        {items.map((it, i) => {
+          if (it.type === "section") {
+            return (
+              <p key={`section-${i}`} className="px-3 pt-4 pb-1 text-[11px] font-semibold text-stone-400 uppercase tracking-wide">
+                {it.label}
+              </p>
+            );
+          }
+          return (
+            <NavLink key={it.to} to={it.to} end={it.end} onClick={() => setOpen(false)}
+              data-testid={`nav-${it.label.toLowerCase().replace(/\s+/g, "-")}`}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  isActive ? "bg-sky-50 text-sky-700" : "text-stone-600 hover:bg-stone-50"}`}>
+              <it.icon className="w-5 h-5" /> {it.label}
+            </NavLink>
+          );
+        })}
       </nav>
       <div className="p-3 border-t border-stone-100">
         <div className="px-3 py-2 mb-1">
