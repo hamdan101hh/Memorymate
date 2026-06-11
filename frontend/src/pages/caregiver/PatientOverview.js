@@ -16,7 +16,8 @@ export default function PatientOverview() {
 
   return (
     <div data-testid="patient-overview-page">
-      <h1 className="font-heading text-2xl sm:text-3xl font-bold mb-6">Patient Overview</h1>
+      <h1 className="font-heading text-2xl sm:text-3xl font-bold mb-6">Supported person overview</h1>
+      <p className="text-sm text-stone-500 mb-6">Daily-life details for the person you support.</p>
 
       <div className="bg-white border border-stone-200 rounded-xl p-6 flex items-center gap-5">
         <span className="grid place-items-center w-20 h-20 rounded-2xl bg-sky-100 text-sky-700 font-heading text-3xl font-bold">{p.full_name?.[0]}</span>

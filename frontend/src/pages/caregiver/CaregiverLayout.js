@@ -15,7 +15,7 @@ const ITEMS = [
   { to: "/caregiver/capture/review", label: "Privacy Review", icon: ShieldQuestion },
   { to: "/caregiver/settings", label: "Settings", icon: Settings },
   { type: "section", label: "More" },
-  { to: "/caregiver/overview", label: "Patient overview", icon: UserRound },
+  { to: "/caregiver/overview", label: "Supported person", icon: UserRound },
   { to: "/caregiver/timeline", label: "Daily timeline", icon: Clock },
   { to: "/caregiver/medication", label: "Medication", icon: Pill },
   { to: "/caregiver/places", label: "Places", icon: MapPin },

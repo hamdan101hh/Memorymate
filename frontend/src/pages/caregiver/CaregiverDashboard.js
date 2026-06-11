@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
+import { getCaregiverDashboardCopy, getCaregiverQuickActionKeys } from "../../lib/purposeConfig";
 import { Button } from "../../components/ui/button";
 import NotificationPermissionPrompt from "../../components/NotificationPermissionPrompt";
 import {
@@ -8,11 +10,22 @@ import {
 } from "../../components/mvp";
 import {
   CalendarClock, Bell, ShieldQuestion, Sparkles, Loader2, StickyNote, Plus, Radio,
-  CalendarDays, Copy,
+  CalendarDays, Copy, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
+const QUICK_ACTIONS = {
+  ai: { to: "/caregiver/appointments", icon: Sparkles, label: "Create with AI", key: "ai" },
+  reminder: { to: "/caregiver/reminders", icon: Plus, label: "Add reminder", key: "reminder" },
+  note: { to: "/caregiver/notes", icon: StickyNote, label: "Supporter note", key: "note" },
+  calendar: { to: "/caregiver/calendar", icon: CalendarDays, label: "Open calendar", key: "calendar" },
+  duplicates: { to: "/caregiver/appointments", icon: Copy, label: "Review duplicates", key: "duplicates" },
+  memory: { to: "/caregiver/capture", icon: Radio, label: "Record memory", key: "memory" },
+  people: { to: "/caregiver/people", icon: Users, label: "Important people", key: "people" },
+};
+
 export default function CaregiverDashboard() {
+  const { user } = useAuth();
   const [ov, setOv] = useState(null);
   const [apptDash, setApptDash] = useState(null);
   const [reminders, setReminders] = useState([]);
@@ -52,7 +65,14 @@ export default function CaregiverDashboard() {
     }
   };
 
+  const dashCopy = getCaregiverDashboardCopy(user?.memorymate_purpose, user?.role);
+  const quickActions = getCaregiverQuickActionKeys(user?.memorymate_purpose)
+    .map((k) => QUICK_ACTIONS[k])
+    .filter(Boolean);
+
   if (!ov || !apptDash) return <LoadingState />;
+
+  const supportedName = ov.patient?.full_name || "the person you support";
 
   const today = new Date().toISOString().slice(0, 10);
   const todayReminders = reminders.filter((r) => r.due_date === today && r.status === "pending");
@@ -80,8 +100,8 @@ export default function CaregiverDashboard() {
   return (
     <div data-testid="caregiver-dashboard">
       <PageHeader
-        title="Today's caregiver overview"
-        subtitle={`Caring for ${ov.patient?.full_name || "your patient"}`}
+        title={dashCopy.title}
+        subtitle={`Supporting ${supportedName}. ${dashCopy.subtitle}`}
         disclaimer={MVP_DISCLAIMER}
         action={
           <Button onClick={generate} disabled={gen} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="generate-summary-btn">
@@ -185,12 +205,15 @@ export default function CaregiverDashboard() {
       <section className="bg-white border border-stone-200 rounded-xl p-4" data-testid="capture-quick-actions">
         <h2 className="font-semibold text-sm mb-3">Quick actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          <QuickLink to="/caregiver/appointments" icon={Sparkles} label="Create with AI" />
-          <QuickLink to="/caregiver/reminders" icon={Plus} label="Add reminder" />
-          <QuickLink to="/caregiver/notes" icon={StickyNote} label="Caregiver note" />
-          <QuickLink to="/caregiver/calendar" icon={CalendarDays} label="Open calendar" />
-          <QuickLink to="/caregiver/appointments" icon={Copy} label="Review duplicates" badge={dupCount || null} />
-          <QuickLink to="/caregiver/capture" icon={Radio} label="Record memory" />
+          {quickActions.map((a) => (
+            <QuickLink
+              key={a.key}
+              to={a.to}
+              icon={a.icon}
+              label={a.label}
+              badge={a.key === "duplicates" ? dupCount || null : null}
+            />
+          ))}
         </div>
       </section>
     </div>

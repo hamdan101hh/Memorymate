@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { getPatientHomeCopy } from "../../lib/purposeConfig";
 import api from "../../lib/api";
 import { logError } from "../../lib/logger";
 import { Switch } from "../../components/ui/switch";
@@ -48,6 +49,7 @@ const TILES = [
 
 export default function PatientHome() {
   const { user } = useAuth();
+  const homeCopy = getPatientHomeCopy(user?.memorymate_purpose);
   const now = useClock();
   const hour = now.getHours();
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -61,7 +63,7 @@ export default function PatientHome() {
         <p className="text-sky-100 text-lg">{dateStr} · {timeStr}</p>
         <h1 className="font-heading text-3xl sm:text-4xl font-extrabold mt-1">{greet}, {firstName}</h1>
         <p className="mt-4 text-sky-50 text-lg leading-relaxed">
-          Your reminders and memories are here. MemoryMate helps organize daily life — it is not emergency support.
+          {homeCopy.tagline} MemoryMate helps organize daily life — it is not emergency support.
         </p>
       </div>
 

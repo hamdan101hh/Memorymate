@@ -22,7 +22,14 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const go = (role) => navigate(role === "patient" ? "/patient" : role === "admin" ? "/admin" : "/caregiver");
+  const go = (user) => {
+    if (!user.onboarding_completed) {
+      navigate("/onboarding");
+      return;
+    }
+    const role = user.role;
+    navigate(role === "patient" ? "/patient" : role === "admin" ? "/admin" : "/caregiver");
+  };
 
   const submit = async (e) => {
     e?.preventDefault();
@@ -30,7 +37,7 @@ export default function Login() {
     try {
       const user = await login(email, password);
       toast.success(`Welcome back, ${user.full_name.split(" ")[0]}!`);
-      go(user.role);
+      go(user);
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Login failed");
     } finally {
@@ -43,7 +50,7 @@ export default function Login() {
     try {
       const user = await demoLogin(role);
       toast.success(`Welcome, ${user.full_name.split(" ")[0]}!`);
-      go(user.role);
+      go(user);
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Demo login failed");
     } finally {

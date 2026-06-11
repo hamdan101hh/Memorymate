@@ -8,10 +8,11 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import { Type, Contrast, Phone, LogOut, ShieldCheck, Loader2, Bell, ChevronRight, ScrollText } from "lucide-react";
+import PurposeSettingsCard from "../../components/PurposeSettingsCard";
 import { toast } from "sonner";
 
 export default function PatientSettings() {
-  const { user, settings, updateSettings, logout } = useAuth();
+  const { user, settings, updateSettings, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [patient, setPatient] = useState(null);
   const [ecName, setEcName] = useState("");
@@ -33,6 +34,8 @@ export default function PatientSettings() {
   return (
     <div className="mm-fade-up" data-testid="patient-settings-page">
       <PatientPageHeader title="Settings" subtitle={user?.full_name} />
+
+      <PurposeSettingsCard user={user} refreshUser={refreshUser} testId="patient-settings-purpose" />
 
       <Card title="Accessibility">
         <Row icon={Type} label="Large text">

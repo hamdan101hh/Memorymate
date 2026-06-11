@@ -70,8 +70,8 @@ export default function Signup() {
 
         <form onSubmit={submit} className="mt-7 space-y-5">
           <div className="flex gap-3">
-            <RoleBtn value="patient" icon={User} title="I am using this for myself" desc="Patient account" />
-            <RoleBtn value="caregiver" icon={HeartHandshake} title="I am caring for someone" desc="Caregiver account" />
+            <RoleBtn value="patient" icon={User} title="For myself" desc="Your own reminders and memories" />
+            <RoleBtn value="caregiver" icon={HeartHandshake} title="To support someone" desc="Family supporter / caregiver account" />
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
