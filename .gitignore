@@ -99,3 +99,10 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Local transfer / secrets backup (never commit)
+MEMORYMATE_SECRETS_BACKUP_PRIVATE.md
+MEMORYMATE_SECRETS_ZIP_PASSWORD_PRIVATE.txt
+memorymate-secrets-private.enc
+memorymate-secrets-private-encrypted.zip
+memorymate-code-transfer.zip
