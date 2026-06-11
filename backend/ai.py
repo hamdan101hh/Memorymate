@@ -574,3 +574,59 @@ async def draft_calendar_event(raw_text: str, today_iso: str, timezone: str = "U
         out = parse_calendar_event_rules(raw_text, today)
         out["warnings"].append("AI parsing had trouble. A basic draft was created — please review.")
         return out
+
+
+async def enhance_reminder_text(raw_text: str) -> dict:
+    """Suggest a clearer reminder title, date/time, repeat, and priority from free text."""
+    raw = (raw_text or "").strip()
+    fallback = {
+        "enhanced_text": raw,
+        "suggested_title": raw[:80] or "Reminder",
+        "due_date": "",
+        "due_time": "",
+        "repeat_rule": "none",
+        "priority": "medium",
+        "needs_clarification": True,
+        "clarification_question": "When should I remind you? Add a date or time.",
+    }
+    if not raw:
+        return {**fallback, "needs_clarification": True, "clarification_question": "What should the reminder say?"}
+    system = (
+        SAFETY_RULES
+        + "\nYou help turn short reminder notes into clear, gentle reminders. "
+        "Respond ONLY with valid JSON:\n"
+        "{\n"
+        '  "enhanced_text": "full clear sentence for the reminder",\n'
+        '  "suggested_title": "short title",\n'
+        '  "due_date": "YYYY-MM-DD or empty string if unknown",\n'
+        '  "due_time": "HH:MM 24h or empty if unknown",\n'
+        '  "repeat_rule": "none | daily | weekly",\n'
+        '  "priority": "low | medium | high",\n'
+        '  "needs_clarification": true/false,\n'
+        '  "clarification_question": "question if date/time missing, else empty string"\n'
+        "}\n"
+        "If date or time is missing or ambiguous, set needs_clarification true and ask one short question. "
+        "Do not invent appointments or medical facts. Today for reference: "
+        + datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    )
+    try:
+        chat = _chat(system, cheap=True)
+        resp = await chat.send_message(UserMessage(text=f"Raw reminder note:\n{raw}"))
+        data = _extract_json(resp)
+        out = {**fallback}
+        out["enhanced_text"] = data.get("enhanced_text") or raw
+        out["suggested_title"] = data.get("suggested_title") or out["enhanced_text"][:80]
+        out["due_date"] = data.get("due_date") or ""
+        out["due_time"] = data.get("due_time") or ""
+        out["repeat_rule"] = data.get("repeat_rule") or "none"
+        out["priority"] = data.get("priority") or "medium"
+        out["needs_clarification"] = bool(data.get("needs_clarification"))
+        out["clarification_question"] = data.get("clarification_question") or ""
+        if not out["due_date"] and not out["due_time"]:
+            out["needs_clarification"] = True
+            if not out["clarification_question"]:
+                out["clarification_question"] = "When should I remind you? Add a date or time."
+        return out
+    except Exception as e:
+        print(f"[ai.enhance_reminder_text] failed: {e}")
+        return fallback

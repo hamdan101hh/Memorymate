@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import api from "../../lib/api";
+import api, { formatApiError } from "../../lib/api";
 import { PatientPageHeader } from "./PatientLayout";
 import { EmptyState } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Bell, Check, Clock, Plus, AlertCircle, Pill, CalendarClock, Users, Loader2 } from "lucide-react";
+import { Bell, Check, Clock, Plus, AlertCircle, Pill, CalendarClock, Users, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 const CAT_ICON = { medication: Pill, appointment: CalendarClock, family: Users };
@@ -14,7 +14,9 @@ const PRIORITY = { high: "border-red-300 bg-red-50", medium: "border-amber-200 b
 export default function PatientReminders() {
   const [reminders, setReminders] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [title, setTitle] = useState("");
+  const [rawTitle, setRawTitle] = useState("");
+  const [enhancing, setEnhancing] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);
 
   const load = useCallback(() => api.get("/reminders").then(({ data }) => setReminders(data)), []);
   useEffect(() => { load(); }, [load]);
@@ -25,10 +27,55 @@ export default function PatientReminders() {
     catch { toast.error("Could not update"); load(); }
   };
 
-  const add = async () => {
-    if (!title.trim()) return;
-    try { await api.post("/reminders", { title, category: "custom", priority: "medium" }); setTitle(""); setAdding(false); toast.success("Reminder added"); load(); }
-    catch { toast.error("Could not add reminder"); }
+  const enhance = async () => {
+    if (!rawTitle.trim()) return;
+    setEnhancing(true);
+    try {
+      const { data } = await api.post("/reminders/enhance", { raw_text: rawTitle.trim() });
+      setSuggestion(data);
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || "Could not enhance");
+    } finally {
+      setEnhancing(false);
+    }
+  };
+
+  const confirmAdd = async () => {
+    const s = suggestion;
+    const title = s?.suggested_title || rawTitle.trim();
+    if (!title) return;
+    try {
+      await api.post("/reminders", {
+        title,
+        description: s?.enhanced_text || "",
+        category: "custom",
+        priority: s?.priority || "medium",
+        due_date: s?.due_date || "",
+        due_time: s?.due_time || "",
+        repeat_rule: s?.repeat_rule || "none",
+      });
+      setRawTitle("");
+      setSuggestion(null);
+      setAdding(false);
+      toast.success("Reminder added");
+      load();
+    } catch {
+      toast.error("Could not add reminder");
+    }
+  };
+
+  const addRaw = async () => {
+    if (!rawTitle.trim()) return;
+    try {
+      await api.post("/reminders", { title: rawTitle.trim(), category: "custom", priority: "medium" });
+      setRawTitle("");
+      setAdding(false);
+      setSuggestion(null);
+      toast.success("Reminder added");
+      load();
+    } catch {
+      toast.error("Could not add reminder");
+    }
   };
 
   if (!reminders) return <div className="grid place-items-center py-20"><Loader2 className="w-7 h-7 animate-spin text-sky-600" /></div>;
@@ -46,10 +93,32 @@ export default function PatientReminders() {
           <Plus className="w-5 h-5 mr-1" /> Add reminder
         </Button>
       </div>
+
       {adding && (
-        <div className="mb-5 flex gap-2">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What should I remind you about?" className="h-12 rounded-xl text-lg" data-testid="new-reminder-input" />
-          <Button onClick={add} className="h-12 rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="new-reminder-save">Save</Button>
+        <div className="mb-5 rounded-2xl border border-stone-200 bg-white p-4 space-y-3" data-testid="add-reminder-form">
+          <Input value={rawTitle} onChange={(e) => setRawTitle(e.target.value)} placeholder="e.g. doctor tmrw 3" className="h-12 rounded-xl text-lg" data-testid="new-reminder-input" />
+          <Button onClick={enhance} disabled={enhancing} variant="outline" className="rounded-xl" data-testid="enhance-reminder-btn">
+            {enhancing ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Sparkles className="w-4 h-4 mr-1" />}
+            Make reminder clearer
+          </Button>
+          {suggestion && (
+            <div className="rounded-xl bg-violet-50 border border-violet-200 p-4 space-y-2" data-testid="reminder-suggestion">
+              <p className="font-semibold">{suggestion.enhanced_text}</p>
+              {(suggestion.due_date || suggestion.due_time) && (
+                <p className="text-sm text-stone-600">When: {suggestion.due_date} {suggestion.due_time}</p>
+              )}
+              {suggestion.needs_clarification && suggestion.clarification_question && (
+                <p className="text-sm text-amber-800" data-testid="reminder-clarification">{suggestion.clarification_question}</p>
+              )}
+              <div className="flex gap-2 pt-2">
+                <Button onClick={confirmAdd} className="rounded-xl bg-emerald-600" data-testid="confirm-reminder-btn">Confirm reminder</Button>
+                <Button onClick={() => setSuggestion(null)} variant="outline" className="rounded-xl">Dismiss</Button>
+              </div>
+            </div>
+          )}
+          {!suggestion && (
+            <Button onClick={addRaw} className="rounded-xl bg-sky-600" data-testid="new-reminder-save">Save as written</Button>
+          )}
         </div>
       )}
 
@@ -110,7 +179,7 @@ function ReminderCard({ r, actions, muted }) {
       </span>
       <div className="flex-1 min-w-0">
         <p className={`text-lg font-semibold ${muted ? "line-through text-stone-400" : ""}`}>{r.title}</p>
-        {(r.due_time || r.description) && <p className="text-sm text-stone-500 truncate">{r.due_time} {r.description}</p>}
+        {(r.due_time || r.description) && <p className="text-sm text-stone-500 truncate">{r.due_date} {r.due_time} {r.description}</p>}
       </div>
       {actions}
     </div>

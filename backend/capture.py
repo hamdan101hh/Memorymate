@@ -41,6 +41,9 @@ DEFAULT_SETTINGS = {
     "wifi_only": False,
     "local_processing": False,
     "location_enabled": False,  # optional: attach coarse location to memories/events
+    "mic_enabled": False,  # user opted in to microphone for Smart Capture (browser permission still required)
+    "capture_language": "auto",  # auto | en-US | ar | ur-PK | ru-RU | zh-CN
+    "last_location_preview": None,  # {label, lat, lng, at} after user-confirmed share
     "default_transcript_storage_mode": "summary_only",  # summary_only | transcript | raw_audio
     # --- message-style preferences (chosen during Always-On onboarding) ---
     "note_style": "warm",       # short | warm | detailed | bullets | family | caregiver
@@ -66,7 +69,8 @@ async def get_settings_doc(pid: str) -> dict:
     if not doc:
         doc = {"id": str(uuid.uuid4()), "patient_id": pid, **DEFAULT_SETTINGS, "created_at": NOW()}
         await db.audio_settings.insert_one(dict(doc))
-    return {k: v for k, v in doc.items() if k != "_id"}
+    merged = {**DEFAULT_SETTINGS, **{k: v for k, v in doc.items() if k != "_id"}}
+    return merged
 
 
 @router.get("/settings")
@@ -83,6 +87,9 @@ class SettingsUpdate(BaseModel):
     wifi_only: Optional[bool] = None
     local_processing: Optional[bool] = None
     location_enabled: Optional[bool] = None
+    mic_enabled: Optional[bool] = None
+    capture_language: Optional[str] = None
+    last_location_preview: Optional[dict] = None
     default_transcript_storage_mode: Optional[str] = None
     note_style: Optional[str] = None
     reminder_tone: Optional[str] = None
