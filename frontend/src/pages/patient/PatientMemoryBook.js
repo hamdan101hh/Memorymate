@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../../lib/api";
 import { PatientPageHeader } from "./PatientLayout";
 import { EmptyState } from "../../components/common";
+import MemoryVisualTile from "../../components/MemoryVisualTile";
 import { BookHeart, Loader2 } from "lucide-react";
 
 export default function PatientMemoryBook() {
@@ -22,10 +23,9 @@ export default function PatientMemoryBook() {
         <div className="space-y-5">
           {entries.map((e) => (
             <div key={e.id} className="rounded-3xl bg-white border-2 border-stone-200 overflow-hidden shadow-sm" data-testid="patient-mb-card">
-              {e.photo_url && <img src={e.photo_url} alt={e.title} className="w-full max-h-72 object-cover" />}
+              {e.photo_url ? <img src={e.photo_url} alt={e.title} className="w-full max-h-72 object-cover" /> : <MemoryVisualTile memory={e} />}
               <div className="p-6">
                 <div className="flex items-center gap-3">
-                  {!e.photo_url && <span className="grid place-items-center w-14 h-14 rounded-2xl bg-rose-100 text-rose-500 shrink-0"><BookHeart className="w-7 h-7" /></span>}
                   <div>
                     <h2 className="font-heading text-2xl font-bold">{e.title}</h2>
                     {e.relationship && <p className="text-lg text-sky-700 font-medium">{e.relationship}</p>}

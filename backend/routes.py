@@ -1,7 +1,7 @@
 """All application routes (memories, reminders, medications, appointments, people,
 places, notes, alerts, chat, summaries, patient profile, admin)."""
 import uuid
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -106,6 +106,12 @@ class MemoryCreate(BaseModel):
     title: Optional[str] = None
     source: str = "manual"  # manual | voice | upload
     location: Optional[dict] = None  # optional {lat, lng, label} when location is enabled
+    skip_ai: bool = False  # save exactly as written without AI enhancement
+    use_draft: Optional[dict] = None  # pre-reviewed draft from POST /memories/draft
+
+
+class MemoryDraftBody(BaseModel):
+    transcript: str
 
 
 def _bucket_now() -> str:
@@ -115,6 +121,7 @@ def _bucket_now() -> str:
 
 async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[str] = None,
                                   source: str = "manual", location: Optional[dict] = None,
+                                  skip_ai: bool = False, use_draft: Optional[dict] = None,
                                   by_user_id: str = "system", by_role: str = "patient") -> dict:
     """Shared memory pipeline: AI extraction + persistence + auto-reminders.
 
@@ -122,11 +129,22 @@ async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[
     so every entry point produces identical, AI-processed memories. Raises 429 via
     usage.assert_within_cap when the patient's daily AI budget is exhausted.
     """
-    await usage.assert_within_cap(pid)
-    _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
-    extracted = await ai.process_transcript(transcript, style=_sdoc.get("note_style"))
-    await usage.record(pid, "memory", in_chars=len(transcript),
-                       out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
+    if skip_ai:
+        extracted = {
+            "title": title or "Memory note",
+            "simple_summary": transcript.strip(),
+            "timeline": _bucket_now(),
+            "people": [], "places": [], "medications": [],
+            "appointments": [], "reminders": [], "caregiver_notes": [],
+        }
+    elif use_draft:
+        extracted = use_draft
+    else:
+        await usage.assert_within_cap(pid)
+        _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
+        extracted = await ai.process_transcript(transcript, style=_sdoc.get("note_style"))
+        await usage.record(pid, "memory", in_chars=len(transcript),
+                           out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
     now = NOW()
     mem_id = str(uuid.uuid4())
     memory = {
@@ -164,7 +182,22 @@ async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_use
         raise HTTPException(status_code=400, detail="Please add some text before saving.")
     return await save_memory_for_patient(
         pid, body.transcript, title=body.title, source=body.source, location=body.location,
+        skip_ai=body.skip_ai, use_draft=body.use_draft,
         by_user_id=user["id"], by_role=user["role"])
+
+
+@router.post("/memories/draft")
+async def memory_draft(body: MemoryDraftBody, user: dict = Depends(get_current_user)):
+    """AI enhancement preview — does not persist until the user confirms save."""
+    pid = await patient_id_for(user)
+    if not body.transcript.strip():
+        raise HTTPException(status_code=400, detail="Please add some text to enhance.")
+    await usage.assert_within_cap(pid)
+    _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
+    extracted = await ai.process_transcript(body.transcript.strip(), style=_sdoc.get("note_style"))
+    await usage.record(pid, "memory_draft", in_chars=len(body.transcript),
+                       out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
+    return {"draft": extracted, "transcript": body.transcript.strip()}
 
 
 @router.get("/memories")
@@ -245,6 +278,22 @@ async def update_reminder(rid: str, body: ReminderUpdate, user: dict = Depends(g
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Reminder not found.")
     return await db.reminders.find_one({"id": rid}, PROJ)
+
+
+class ReminderEnhanceBody(BaseModel):
+    raw_text: str
+
+
+@router.post("/reminders/enhance")
+async def enhance_reminder(body: ReminderEnhanceBody, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    if not body.raw_text.strip():
+        raise HTTPException(status_code=400, detail="Please type a reminder first.")
+    await usage.assert_within_cap(pid)
+    result = await ai.enhance_reminder_text(body.raw_text.strip())
+    await usage.record(pid, "reminder_enhance", in_chars=len(body.raw_text),
+                       out_chars=len(result.get("enhanced_text", "")), tier="cheap")
+    return result
 
 
 @router.delete("/reminders/{rid}")
@@ -1005,8 +1054,37 @@ async def resolve_alert(alert_id: str, user: dict = Depends(require_role("caregi
 
 
 # ---------------- chat assistant ----------------
+CHAT_TTL_HOURS = 24
+
+
+def _chat_expires_at() -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=CHAT_TTL_HOURS)).isoformat()
+
+
+def _chat_message_visible(msg: dict) -> bool:
+    if msg.get("saved"):
+        return True
+    exp = msg.get("expires_at")
+    if exp:
+        return exp > datetime.now(timezone.utc).isoformat()
+    created = msg.get("created_at") or ""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=CHAT_TTL_HOURS)).isoformat()
+    return created >= cutoff
+
+
 class ChatMessage(BaseModel):
     message: str
+
+
+class ChatSaveBody(BaseModel):
+    message_id: Optional[str] = None
+    message: Optional[str] = None
+
+
+class ChatReminderBody(BaseModel):
+    message_id: Optional[str] = None
+    message: Optional[str] = None
+    title: Optional[str] = None
 
 
 async def _build_context(pid: str) -> str:
@@ -1052,26 +1130,82 @@ async def _build_context(pid: str) -> str:
 @router.get("/chat")
 async def chat_history(user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
-    return await db.chat_messages.find({"patient_id": pid}, PROJ).sort("created_at", 1).to_list(200)
+    msgs = await db.chat_messages.find({"patient_id": pid}, PROJ).sort("created_at", 1).to_list(200)
+    visible = [m for m in msgs if _chat_message_visible(m)]
+    return {"messages": visible, "expires_after_hours": CHAT_TTL_HOURS, "session_note": "Chat clears after 24 hours unless you save something."}
 
 
 @router.post("/chat")
 async def chat_send(body: ChatMessage, user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
     now = NOW()
+    exp = _chat_expires_at()
     await db.chat_messages.insert_one({
         "id": str(uuid.uuid4()), "patient_id": pid, "user_id": user["id"],
-        "role": "user", "message": body.message, "created_at": now})
-    history = await db.chat_messages.find({"patient_id": pid}, PROJ).sort("created_at", 1).to_list(50)
+        "role": "user", "message": body.message, "created_at": now,
+        "expires_at": exp, "saved": False})
+    history_msgs = await db.chat_messages.find({"patient_id": pid}, PROJ).sort("created_at", 1).to_list(50)
+    history = [m for m in history_msgs if _chat_message_visible(m)]
     context = await _build_context(pid)
     await usage.assert_within_cap(pid)
     _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "reminder_tone": 1}) or {}
     answer = await ai.answer_question(context, history, body.message, tone=_sdoc.get("reminder_tone"))
     await usage.record(pid, "assistant", in_chars=len(context) + len(body.message), out_chars=len(answer), tier="primary")
+    assistant_id = str(uuid.uuid4())
     await db.chat_messages.insert_one({
-        "id": str(uuid.uuid4()), "patient_id": pid, "user_id": user["id"],
-        "role": "assistant", "message": answer, "created_at": NOW()})
-    return {"answer": answer}
+        "id": assistant_id, "patient_id": pid, "user_id": user["id"],
+        "role": "assistant", "message": answer, "created_at": NOW(),
+        "expires_at": exp, "saved": False})
+    return {"answer": answer, "message_id": assistant_id}
+
+
+@router.delete("/chat")
+async def chat_clear(user: dict = Depends(get_current_user)):
+    """Clear unsaved chat messages (saved messages stay in Memory Book)."""
+    pid = await patient_id_for(user)
+    res = await db.chat_messages.delete_many({"patient_id": pid, "saved": {"$ne": True}})
+    return {"cleared": res.deleted_count}
+
+
+@router.post("/chat/save-memory")
+async def chat_save_memory(body: ChatSaveBody, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    text = body.message
+    if body.message_id:
+        doc = await db.chat_messages.find_one({"id": body.message_id, "patient_id": pid}, PROJ)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Message not found.")
+        text = doc.get("message")
+        await db.chat_messages.update_one({"id": body.message_id}, {"$set": {"saved": True}})
+    if not text or not text.strip():
+        raise HTTPException(status_code=400, detail="Nothing to save.")
+    mem = await save_memory_for_patient(pid, text.strip(), source="assistant",
+                                        by_user_id=user["id"], by_role=user["role"])
+    return {"memory": mem, "saved": True}
+
+
+@router.post("/chat/save-reminder")
+async def chat_save_reminder(body: ChatReminderBody, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    text = body.message
+    if body.message_id:
+        doc = await db.chat_messages.find_one({"id": body.message_id, "patient_id": pid}, PROJ)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Message not found.")
+        text = doc.get("message")
+        await db.chat_messages.update_one({"id": body.message_id}, {"$set": {"saved": True}})
+    title = (body.title or text or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Nothing to save as a reminder.")
+    now = NOW()
+    doc = {
+        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+        "title": title[:200], "description": (text or "")[:500], "category": "custom",
+        "priority": "medium", "due_date": "", "due_time": "", "repeat_rule": "none",
+        "status": "pending", "source": "assistant", "created_at": now, "completed_at": None,
+    }
+    await db.reminders.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
 
 
 # ---------------- AI usage ----------------
@@ -1085,13 +1219,20 @@ async def usage_today(user: dict = Depends(get_current_user)):
 @router.get("/summary/today")
 async def summary_today(user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
-    today = date.today().isoformat()
+    patient = await db.patients.find_one({"id": pid}, PROJ)
+    tz_name = (patient or {}).get("timezone") or "UTC"
+    try:
+        today = datetime.now(ZoneInfo(tz_name)).date().isoformat()
+    except Exception:
+        today = date.today().isoformat()
     memories = [m for m in await _list("memories", pid) if (m.get("created_at") or "").startswith(today)]
     reminders = await _list("reminders", pid)
     notes = await _list("caregiver_notes", pid)
     if user["role"] == "patient":
         notes = [n for n in notes if n.get("visible_to_patient", True)]
     appts = await _list("appointments", pid)
+    appts_today = [a for a in appts if a.get("date") == today]
+    reminders_today = [r for r in reminders if r.get("due_date") == today and r.get("status") in ("pending", "missed")]
     buckets = {"morning": [], "afternoon": [], "evening": []}
     for m in memories:
         buckets.get(m.get("timeline", "afternoon"), buckets["afternoon"]).append(m)
@@ -1100,13 +1241,45 @@ async def summary_today(user: dict = Depends(get_current_user)):
         people += m.get("people_mentioned", [])
         places += m.get("places_mentioned", [])
         meds += m.get("medication_detected", [])
+    suggested = "Record a memory or ask your assistant."
+    if appts_today:
+        a0 = appts_today[0]
+        suggested = f"Next appointment: {a0.get('title', 'Appointment')} at {a0.get('time', 'today')}."
+    elif reminders_today:
+        suggested = f"Reminder: {reminders_today[0].get('title', 'Task')}."
+    elif memories:
+        suggested = "Review today's memories and save anything important."
     return {
-        "date": today, "timeline": buckets,
+        "date": today, "timezone": tz_name, "timeline": buckets,
         "people": people, "places": places, "medications": meds,
-        "reminders_today": [r for r in reminders if r.get("status") in ("pending", "missed")][:10],
-        "notes": notes[:10], "appointments": appts[:10],
+        "reminders_today": reminders_today[:10],
+        "notes": notes[:10], "appointments": appts_today[:10],
         "has_data": len(memories) > 0,
+        "suggested_next_action": suggested,
+        "refresh_note": "Today's summary refreshes daily. Save anything important.",
     }
+
+
+@router.post("/summary/today/save")
+async def summary_today_save(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    summary = await summary_today(user)
+    lines = [f"Today's summary ({summary['date']})", summary.get("suggested_next_action", "")]
+    for bucket, label in [("morning", "Morning"), ("afternoon", "Afternoon"), ("evening", "Evening")]:
+        items = summary["timeline"].get(bucket, [])
+        if items:
+            lines.append(f"{label}:")
+            for m in items:
+                lines.append(f"- {m.get('title', 'Memory')}: {m.get('simple_summary', '')}")
+    if summary.get("reminders_today"):
+        lines.append("Reminders today:")
+        for r in summary["reminders_today"]:
+            lines.append(f"- {r.get('title', '')}")
+    text = "\n".join(lines).strip()
+    mem = await save_memory_for_patient(
+        pid, text, title=f"Today's summary — {summary['date']}", source="daily_summary",
+        skip_ai=True, by_user_id=user["id"], by_role=user["role"])
+    return {"memory": mem, "saved": True}
 
 
 @router.post("/caregiver/summary")

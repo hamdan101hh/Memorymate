@@ -54,9 +54,9 @@ export default function CaptureStart({ mode = "capture" }) {
         <span className={`grid place-items-center w-12 h-12 rounded-2xl text-white ${isMeeting ? "bg-violet-600" : "bg-sky-600"}`}>
           {isMeeting ? <Video className="w-6 h-6" /> : <Radio className="w-6 h-6" />}
         </span>
-        <h1 className="font-heading text-2xl sm:text-3xl font-bold">{isMeeting ? "Meeting Mode" : "Start Memory Capture"}</h1>
+        <h1 className="font-heading text-2xl sm:text-3xl font-bold">{isMeeting ? "Meeting Capture" : "Start Memory Capture"}</h1>
       </div>
-      <p className="text-stone-600 mb-4">{isMeeting ? "Set up a meeting to capture key points, decisions and action items — with consent." : "Start a focused capture session. By default, only a summary and action items are saved."}</p>
+      <p className="text-stone-600 mb-4">{isMeeting ? "Start and stop meeting capture with consent. Review notes before saving — raw audio is not saved unless you choose." : "Start a focused capture session. By default, only a summary and action items are saved after review."}</p>
       <button onClick={() => navigate(`${base}/capture/vault`)} className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-stone-700 hover:text-stone-900" data-testid="open-vault-link">
         <LockKeyhole className="w-4 h-4" /> Private Vault
       </button>

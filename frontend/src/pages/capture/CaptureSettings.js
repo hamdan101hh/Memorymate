@@ -5,7 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { Disclaimer } from "../../components/common";
 import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Infinity as InfinityIcon, MapPin, Pencil, Bell } from "lucide-react";
+import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Infinity as InfinityIcon, MapPin, Pencil, Bell, Mic } from "lucide-react";
+import { CAPTURE_LANGUAGES } from "../../lib/captureLanguage";
 import { toast } from "sonner";
 
 export default function CaptureSettings() {
@@ -102,16 +103,37 @@ export default function CaptureSettings() {
         <p className="text-xs text-stone-400 pt-2">This sets how memory notes and reminders are worded across the app.</p>
       </Card>
 
+      <Card title="Microphone & consent">
+        <Row icon={Mic} label="Allow microphone for Smart Capture">
+          <Switch checked={!!s.mic_enabled} onCheckedChange={(v) => update({ mic_enabled: v })} data-testid="setting-mic" />
+        </Row>
+        <p className="text-xs text-stone-400 pt-2">Smart Capture can listen while this app is open and you have given permission. It is visible and can be paused anytime. Microphone access is optional.</p>
+      </Card>
+
       <Card title="Location">
-        <Row icon={MapPin} label="Allow attaching location to memories">
+        <Row icon={MapPin} label="Allow location sharing">
           <Switch checked={!!s.location_enabled} onCheckedChange={(v) => update({ location_enabled: v })} data-testid="setting-location" />
         </Row>
-        <p className="text-xs text-stone-400 pt-2">When on, you can choose to attach your location to a memory. It is never attached automatically.</p>
+        <p className="text-xs text-stone-400 pt-2">Location is optional and only saved when you confirm. Use your location to add context to memories and meeting notes.</p>
+        {s.last_location_preview?.label && (
+          <p className="text-xs text-stone-500 pt-2" data-testid="last-location-preview">Last shared: {s.last_location_preview.label}</p>
+        )}
+      </Card>
+
+      <Card title="Capture language">
+        <Row icon={Pencil} label="Speech & capture language">
+          <Select value={s.capture_language || "auto"} onValueChange={(v) => update({ capture_language: v })}>
+            <SelectTrigger className="w-40 rounded-xl" data-testid="setting-capture-language"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {CAPTURE_LANGUAGES.map((l) => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Row>
       </Card>
 
       <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 mb-5" data-testid="always-on-note">
-        <div className="flex items-center gap-2 font-semibold text-emerald-800"><InfinityIcon className="w-5 h-5" /> Always-On Memory Capture</div>
-        <p className="text-sm text-stone-600 mt-1">Set a duration once and MemoryMate keeps listening in the background, saving only useful memories using free on-device dictation. A visible “Memory Capture is ON” status stays the whole time, and you can pause, stop, or delete recent capture anytime.</p>
+        <div className="flex items-center gap-2 font-semibold text-emerald-800"><InfinityIcon className="w-5 h-5" /> Smart Memory Capture</div>
+        <p className="text-sm text-stone-600 mt-1">Consent-based capture while this app is open. A visible status stays on screen, and you can pause, stop, or delete recent temporary capture anytime. Temporary audio is not saved unless turned into a memory.</p>
         <button onClick={() => navigate(`${base}/capture/always-on`)} className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2" data-testid="settings-setup-always-on">
           <InfinityIcon className="w-4 h-4" /> Set up Always-On capture
         </button>
