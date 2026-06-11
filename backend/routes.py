@@ -12,6 +12,7 @@ from auth import get_current_user, require_role, _log
 import ai
 import usage
 import appointment_dashboard as apdash
+import appointment_ai
 
 router = APIRouter(prefix="/api", tags=["app"])
 
@@ -297,6 +298,7 @@ class AppointmentCreate(BaseModel):
     notes: Optional[str] = ""
     transport_notes: Optional[str] = ""
     reminder_time: Optional[str] = ""
+    ignore_duplicate_warning: bool = False
 
 
 @router.get("/appointments")
@@ -308,10 +310,194 @@ async def list_appointments(user: dict = Depends(get_current_user)):
 @router.post("/appointments")
 async def create_appointment(body: AppointmentCreate, user: dict = Depends(require_role("caregiver", "admin"))):
     pid = await patient_id_for(user)
+    if not body.ignore_duplicate_warning and body.title and body.date:
+        candidate = {
+            "title": body.title, "date": body.date or "",
+            "time": body.time or "", "location": body.location or "",
+        }
+        matches = await _find_duplicate_appointments(pid, candidate)
+        if matches:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "This looks similar to an existing appointment.",
+                    "duplicate_risk": True,
+                    "matches": _serialize_dup_matches(matches),
+                },
+            )
+    fields = body.model_dump()
+    fields.pop("ignore_duplicate_warning", None)
     doc = {"id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-           **body.model_dump(), "created_at": NOW()}
+           **fields, "created_at": NOW()}
     await db.appointments.insert_one(doc)
     return {k: v for k, v in doc.items() if k != "_id"}
+
+
+class DraftAiBody(BaseModel):
+    raw_text: str = ""
+    conversation: Optional[List[dict]] = None
+    timezone: Optional[str] = None
+
+
+@router.post("/appointments/draft-ai")
+async def appointment_draft_ai(
+    body: DraftAiBody,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    """Parse natural language into a reviewable appointment draft. Does NOT write to DB."""
+    if not body.raw_text.strip() and not body.conversation:
+        raise HTTPException(status_code=400, detail="Please describe the appointment.")
+    pid = await patient_id_for(user)
+    from gcal import _resolve_tz, _resolve_tz_value
+    tz = _resolve_tz_value(body.timezone) if body.timezone else await _resolve_tz(pid, user)
+    now_local = datetime.now(ZoneInfo(tz))
+    result = await appointment_ai.draft_appointment(
+        body.raw_text.strip(),
+        now_local.date().isoformat(),
+        tz,
+        body.conversation,
+    )
+    await usage.record(pid, "appointment_draft", in_chars=len(body.raw_text), out_chars=200, tier="cheap")
+    return result
+
+
+class CheckApptDuplicateBody(BaseModel):
+    title: str
+    date: Optional[str] = ""
+    time: Optional[str] = ""
+    location: Optional[str] = ""
+    appointment_id: Optional[str] = None
+
+
+@router.post("/appointments/check-duplicate")
+async def check_appointment_duplicate(
+    body: CheckApptDuplicateBody,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    pid = await patient_id_for(user)
+    candidate = {
+        "title": body.title,
+        "date": body.date or "",
+        "time": body.time or "",
+        "location": body.location or "",
+    }
+    matches = await _find_duplicate_appointments(pid, candidate, body.appointment_id)
+    return {"duplicate_risk": len(matches) > 0, "matches": _serialize_dup_matches(matches)}
+
+
+class CreateFromDraftBody(BaseModel):
+    title: str
+    date: str
+    time: Optional[str] = ""
+    end_time: Optional[str] = ""
+    all_day: bool = False
+    location: Optional[str] = ""
+    notes: Optional[str] = ""
+    reminder_time: Optional[str] = ""
+    doctor_or_clinic: Optional[str] = ""
+    add_to_google: bool = False
+    online_meeting: bool = False
+    attendees: Optional[List[str]] = None
+    ignore_duplicate_warning: bool = False
+    update_existing_id: Optional[str] = None
+
+
+@router.post("/appointments/create-from-draft")
+async def create_appointment_from_draft(
+    body: CreateFromDraftBody,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    """Create appointment only after user confirmation. Optionally adds to Google Calendar."""
+    pid = await patient_id_for(user)
+    candidate = {
+        "title": body.title,
+        "date": body.date,
+        "time": body.time or "",
+        "location": body.location or "",
+    }
+    if body.update_existing_id:
+        existing = await db.appointments.find_one(
+            {"id": body.update_existing_id, "patient_id": pid}, PROJ,
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="Appointment not found.")
+        updates = {
+            "title": body.title,
+            "date": body.date,
+            "time": body.time or "",
+            "location": body.location or "",
+            "notes": body.notes or "",
+            "reminder_time": body.reminder_time or "",
+            "doctor_or_clinic": body.doctor_or_clinic or "",
+            "updated_at": NOW(),
+        }
+        await db.appointments.update_one({"id": body.update_existing_id}, {"$set": updates})
+        appt = await db.appointments.find_one({"id": body.update_existing_id}, PROJ)
+    else:
+        if not body.ignore_duplicate_warning:
+            matches = await _find_duplicate_appointments(pid, candidate)
+            if matches:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "This looks similar to an existing appointment.",
+                        "duplicate_risk": True,
+                        "matches": _serialize_dup_matches(matches),
+                    },
+                )
+        appt = {
+            "id": str(uuid.uuid4()),
+            "patient_id": pid,
+            "created_by_user_id": user["id"],
+            "title": body.title,
+            "doctor_or_clinic": body.doctor_or_clinic or "",
+            "date": body.date,
+            "time": body.time or "",
+            "location": body.location or "",
+            "notes": body.notes or "Created from AI draft",
+            "transport_notes": "",
+            "reminder_time": body.reminder_time or "",
+            "source": "ai_draft",
+            "created_at": NOW(),
+        }
+        await db.appointments.insert_one(appt)
+        if body.reminder_time:
+            await db.reminders.insert_one({
+                "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+                "title": body.title, "description": body.reminder_time,
+                "category": "appointment", "priority": "medium",
+                "due_date": body.date, "due_time": body.time or "",
+                "repeat_rule": "none", "status": "pending",
+                "source": "ai_draft", "created_at": NOW(), "completed_at": None,
+            })
+
+    google_result = None
+    if body.add_to_google:
+        from gcal import add_event, AddEventBody, _connected_link
+        try:
+            await _connected_link(user)
+        except HTTPException:
+            raise HTTPException(
+                status_code=400,
+                detail="Connect Google Calendar to add this appointment to Google.",
+            )
+        google_result = await add_event(
+            AddEventBody(
+                appointment_id=appt["id"],
+                online_meeting=body.online_meeting,
+                meeting_provider="google_meet" if body.online_meeting else None,
+                attendees=body.attendees,
+                source="ai_draft",
+                ignore_duplicate_warning=True,
+            ),
+            user,
+        )
+
+    return {
+        "ok": True,
+        "appointment": {k: v for k, v in appt.items() if k != "_id"},
+        "google": google_result,
+    }
 
 
 class AppointmentUpdate(BaseModel):
@@ -331,6 +517,35 @@ class AppointmentUpdate(BaseModel):
 async def _appointment_not_dup_fps(pid: str) -> set[str]:
     rows = await db.appointment_dedup_state.find({"patient_id": pid}, PROJ).to_list(500)
     return {r.get("fingerprint", "") for r in rows if r.get("status") == "not_duplicate" and r.get("fingerprint")}
+
+
+async def _find_duplicate_appointments(
+    pid: str, candidate: dict, exclude_id: str | None = None,
+) -> list[dict]:
+    appointments = await db.appointments.find({"patient_id": pid}, PROJ).to_list(500)
+    matches: list[dict] = []
+    for a in appointments:
+        if a.get("calendar_archived") or a.get("status") == "completed":
+            continue
+        if exclude_id and a.get("id") == exclude_id:
+            continue
+        if apdash.is_appt_duplicate(candidate, a):
+            matches.append(a)
+    return matches
+
+
+def _serialize_dup_matches(matches: list[dict]) -> list[dict]:
+    return [
+        {
+            "id": m.get("id"),
+            "title": m.get("title"),
+            "date": m.get("date"),
+            "time": m.get("time"),
+            "location": m.get("location", ""),
+            "google_event_id": m.get("google_event_id"),
+        }
+        for m in matches
+    ]
 
 
 @router.get("/appointments/dashboard")

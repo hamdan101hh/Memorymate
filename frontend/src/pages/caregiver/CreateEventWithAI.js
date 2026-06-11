@@ -14,6 +14,7 @@ import {
   MapPin, Navigation, X, Video, Users, Share2, Copy, Mail, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
+import MvpDisclaimer from "../../components/caregiver/MvpDisclaimer";
 
 const EMPTY_DRAFT = {
   title: "", date: "", time: "", end_time: "", all_day: false,
@@ -399,9 +400,10 @@ export default function CreateEventWithAI({ connected, onSuccess }) {
         <h2 className="font-heading text-lg font-semibold flex items-center gap-2 mb-1">
           <Sparkles className="w-5 h-5 text-sky-600" /> Create event with AI
         </h2>
-        <p className="text-sm text-stone-500 mb-4">
+        <p className="text-sm text-stone-500 mb-2">
           Type or speak what should be added. MemoryMate will create a draft first, and nothing is added until you approve.
         </p>
+        <MvpDisclaimer className="mb-4" />
         <Textarea
           value={rawText + (listening && interim ? ` ${interim}` : "")}
           onChange={(e) => setRawText(e.target.value)}
