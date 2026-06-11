@@ -3,6 +3,7 @@ places, notes, alerts, chat, summaries, patient profile, admin)."""
 import uuid
 from datetime import datetime, timezone, date
 from typing import Optional, List
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, EmailStr
 
@@ -10,6 +11,7 @@ from db import db
 from auth import get_current_user, require_role, _log
 import ai
 import usage
+import appointment_dashboard as apdash
 
 router = APIRouter(prefix="/api", tags=["app"])
 
@@ -319,6 +321,105 @@ class AppointmentUpdate(BaseModel):
     time: Optional[str] = None
     location: Optional[str] = None
     notes: Optional[str] = None
+    transport_notes: Optional[str] = None
+    reminder_time: Optional[str] = None
+    status: Optional[str] = None
+    calendar_archived: Optional[bool] = None
+    dedup_exempt: Optional[bool] = None
+
+
+async def _appointment_not_dup_fps(pid: str) -> set[str]:
+    rows = await db.appointment_dedup_state.find({"patient_id": pid}, PROJ).to_list(500)
+    return {r.get("fingerprint", "") for r in rows if r.get("status") == "not_duplicate" and r.get("fingerprint")}
+
+
+@router.get("/appointments/dashboard")
+async def appointments_dashboard(
+    include_archived: bool = False,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    """Grouped appointments with urgency, dedup, and summary counts."""
+    pid = await patient_id_for(user)
+    from gcal import _resolve_tz  # lazy: avoid routes ↔ gcal circular import
+    tz = await _resolve_tz(pid, user)
+    now = datetime.now(ZoneInfo(tz))
+    appointments = await db.appointments.find({"patient_id": pid}, PROJ).to_list(500)
+    not_dup_fps = await _appointment_not_dup_fps(pid)
+    return apdash.build_dashboard(appointments, not_dup_fps, now, tz, include_archived=include_archived)
+
+
+class AppointmentArchiveBody(BaseModel):
+    appointment_id: str
+    archive: bool = True
+
+
+@router.post("/appointments/archive")
+async def archive_appointment_route(
+    body: AppointmentArchiveBody,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    """Archive appointment from active list (does not delete Google Calendar events)."""
+    pid = await patient_id_for(user)
+    appt = await db.appointments.find_one({"id": body.appointment_id, "patient_id": pid}, PROJ)
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    await db.appointments.update_one(
+        {"id": body.appointment_id},
+        {"$set": {"calendar_archived": bool(body.archive), "calendar_archived_at": NOW()}},
+    )
+    return {"ok": True, "calendar_archived": bool(body.archive)}
+
+
+@router.post("/appointments/archive-duplicates")
+async def archive_duplicate_appointments(user: dict = Depends(require_role("caregiver", "admin"))):
+    """Archive repeated MemoryMate-only duplicate appointments (never touches Google events)."""
+    pid = await patient_id_for(user)
+    appointments = await db.appointments.find({"patient_id": pid}, PROJ).to_list(500)
+    not_dup_fps = await _appointment_not_dup_fps(pid)
+    to_archive = apdash.find_archiveable_duplicates(appointments, not_dup_fps)
+    ids = [a["id"] for a in to_archive]
+    if ids:
+        await db.appointments.update_many(
+            {"id": {"$in": ids}, "patient_id": pid},
+            {"$set": {"calendar_archived": True, "calendar_archived_at": NOW(), "archived_reason": "duplicate"}},
+        )
+    return {"ok": True, "archived_count": len(ids), "archived_ids": ids}
+
+
+class AppointmentDedupBody(BaseModel):
+    fingerprint: str
+    appointment_id: Optional[str] = None
+
+
+@router.post("/appointments/mark-not-duplicate")
+async def mark_appointment_not_duplicate(
+    body: AppointmentDedupBody,
+    user: dict = Depends(require_role("caregiver", "admin")),
+):
+    pid = await patient_id_for(user)
+    fp = (body.fingerprint or "").strip()
+    if not fp:
+        raise HTTPException(status_code=400, detail="fingerprint is required.")
+    await db.appointment_dedup_state.update_one(
+        {"patient_id": pid, "fingerprint": fp},
+        {
+            "$set": {
+                "patient_id": pid,
+                "fingerprint": fp,
+                "status": "not_duplicate",
+                "appointment_id": body.appointment_id,
+                "updated_at": NOW(),
+            },
+            "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": NOW()},
+        },
+        upsert=True,
+    )
+    if body.appointment_id:
+        await db.appointments.update_one(
+            {"id": body.appointment_id, "patient_id": pid},
+            {"$set": {"dedup_exempt": True}},
+        )
+    return {"ok": True}
 
 
 @router.patch("/appointments/{aid}")
@@ -327,6 +428,8 @@ async def update_appointment(aid: str, body: AppointmentUpdate, user: dict = Dep
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update.")
+    if updates.get("status") == "completed":
+        updates["completed_at"] = NOW()
     result = await db.appointments.update_one(
         {"id": aid, "patient_id": pid},
         {"$set": updates},
@@ -335,6 +438,18 @@ async def update_appointment(aid: str, body: AppointmentUpdate, user: dict = Dep
         raise HTTPException(status_code=404, detail="Appointment not found.")
     doc = await db.appointments.find_one({"id": aid, "patient_id": pid}, PROJ)
     return doc
+
+
+@router.post("/appointments/{aid}/complete")
+async def complete_appointment(aid: str, user: dict = Depends(require_role("caregiver", "admin"))):
+    pid = await patient_id_for(user)
+    result = await db.appointments.update_one(
+        {"id": aid, "patient_id": pid},
+        {"$set": {"status": "completed", "completed_at": NOW()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    return {"ok": True, "status": "completed"}
 
 
 @router.delete("/appointments/{aid}")
