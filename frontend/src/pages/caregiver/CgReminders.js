@@ -38,8 +38,11 @@ export default function CgReminders() {
 
   return (
     <div data-testid="cg-reminders-page">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-heading text-2xl sm:text-3xl font-bold">Reminders</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div>
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold">Reminders</h1>
+          <p className="text-sm text-stone-500 mt-1">Upcoming tasks and medication reminders for your patient.</p>
+        </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="add-reminder-btn"><Plus className="w-4 h-4 mr-1" /> Add reminder</Button></DialogTrigger>
           <DialogContent className="rounded-2xl">

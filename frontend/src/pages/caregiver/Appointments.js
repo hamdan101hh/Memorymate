@@ -16,6 +16,7 @@ import {
   MoreHorizontal, Check, Archive, CalendarPlus, Pencil, AlertTriangle, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import CreateAppointmentWithAI from "./CreateAppointmentWithAI";
 
 const empty = {
   title: "", doctor_or_clinic: "", date: "", time: "", location: "",
@@ -153,6 +154,8 @@ export default function Appointments() {
   const [openGroups, setOpenGroups] = useState(() =>
     Object.fromEntries(Object.entries(GROUP_META).map(([k, v]) => [k, v.defaultOpen])),
   );
+  const [dupModal, setDupModal] = useState(null);
+  const [pendingForm, setPendingForm] = useState(null);
 
   const load = useCallback(() => {
     const archived = filter === "archived" ? "?include_archived=true" : "";
@@ -163,17 +166,31 @@ export default function Appointments() {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const add = async () => {
-    if (!form.title.trim()) { toast.error("Title is required"); return; }
+  const add = async (ignoreDuplicate = false, updateId = null) => {
+    const payload = pendingForm || form;
+    if (!payload.title.trim()) { toast.error("Title is required"); return; }
     setSaving(true);
     try {
-      await api.post("/appointments", form);
-      toast.success("Appointment added");
+      if (updateId) {
+        await api.patch(`/appointments/${updateId}`, payload);
+        toast.success("Appointment updated");
+      } else {
+        await api.post("/appointments", { ...payload, ignore_duplicate_warning: ignoreDuplicate });
+        toast.success("Appointment added");
+      }
       setOpen(false);
       setForm(empty);
+      setDupModal(null);
+      setPendingForm(null);
       load();
-    } catch {
-      toast.error("Could not add");
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      if (err.response?.status === 409 && detail?.duplicate_risk) {
+        setPendingForm(payload);
+        setDupModal({ matches: detail.matches || [] });
+      } else {
+        toast.error(formatApiError(detail) || "Could not add");
+      }
     } finally { setSaving(false); }
   };
 
@@ -359,6 +376,8 @@ export default function Appointments() {
         <p className="text-sm text-stone-600 mb-4">{summary.summary_text}</p>
       )}
 
+      <CreateAppointmentWithAI onSuccess={load} />
+
       {/* Search & filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
@@ -388,7 +407,7 @@ export default function Appointments() {
 
       {/* Grouped list */}
       {summary?.total_active === 0 && !hasDupes && filter === "all" ? (
-        <EmptyState icon={CalendarClock} title="No appointments yet" message="Add an appointment to keep track of upcoming visits." testid="appointments-empty" />
+        <EmptyState icon={CalendarClock} title="Nothing urgent right now" message="Your upcoming appointments are organized. Add one manually or use Create appointment with AI." testid="appointments-empty" />
       ) : (
         Object.entries(GROUP_META).map(([groupKey, meta]) => {
           const items = grouped[groupKey] || [];
@@ -448,6 +467,31 @@ export default function Appointments() {
             <Button className="bg-amber-600 hover:bg-amber-700" onClick={archiveDuplicates} disabled={busy === "cleanup"}>
               {busy === "cleanup" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Archive duplicates"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!dupModal} onOpenChange={(o) => !o && setDupModal(null)}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" /> Similar appointment found
+            </DialogTitle>
+            <DialogDescription>This looks similar to an existing appointment.</DialogDescription>
+          </DialogHeader>
+          <ul className="text-sm space-y-1">
+            {(dupModal?.matches || []).map((m) => (
+              <li key={m.id} className="rounded-lg bg-amber-50 px-3 py-2">
+                {m.title} · {[m.date, m.time].filter(Boolean).join(" ")}
+              </li>
+            ))}
+          </ul>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setDupModal(null)}>Cancel</Button>
+            {dupModal?.matches?.[0] && (
+              <Button variant="outline" onClick={() => add(false, dupModal.matches[0].id)}>Update existing</Button>
+            )}
+            <Button className="bg-amber-600 hover:bg-amber-700" onClick={() => add(true)}>Save anyway</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
