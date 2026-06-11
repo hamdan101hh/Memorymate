@@ -474,6 +474,72 @@ async def hide_suggestion(body: SuggestionHideBody, user: dict = Depends(require
     return {"ok": True, "status": status}
 
 
+async def _appointment_not_dup_fps(pid: str) -> set[str]:
+    rows = await db.appointment_dedup_state.find({"patient_id": pid}, PROJ).to_list(500)
+    return {r.get("fingerprint", "") for r in rows if r.get("status") == "not_duplicate" and r.get("fingerprint")}
+
+
+@router.post("/cleanup-clutter")
+async def cleanup_clutter(user: dict = Depends(require_role("caregiver", "admin"))):
+    """Hide duplicate suggestions and archive MemoryMate-only duplicates. Never deletes Google events."""
+    import appointment_dashboard as apdash
+    pid = await patient_id_for(user)
+    appointments = await db.appointments.find({"patient_id": pid}, PROJ).to_list(500)
+    not_dup_fps = await _appointment_not_dup_fps(pid)
+    to_archive = apdash.find_archiveable_duplicates(appointments, not_dup_fps)
+    archived_ids = [a["id"] for a in to_archive]
+    if archived_ids:
+        await db.appointments.update_many(
+            {"id": {"$in": archived_ids}, "patient_id": pid},
+            {"$set": {"calendar_archived": True, "calendar_archived_at": NOW(), "archived_reason": "duplicate"}},
+        )
+    hidden_count = 0
+    link = await _connected_link(user)
+    if link:
+        try:
+            token = await _refresh(link)
+            payload = await _dashboard_payload(pid, token, 30, False, user)
+            dup_items = (payload.get("groups") or {}).get("duplicates") or []
+            for item in dup_items:
+                gid = (item.get("google_event_id") or "").strip() or None
+                fp = (item.get("fingerprint") or "").strip()
+                if not gid and not fp:
+                    continue
+                filt: dict = {"patient_id": pid}
+                if gid:
+                    filt["google_event_id"] = gid
+                elif fp:
+                    filt["fingerprint"] = fp
+                await db.calendar_suggestion_state.update_one(
+                    filt,
+                    {
+                        "$set": {
+                            "patient_id": pid,
+                            "google_event_id": gid,
+                            "fingerprint": fp or (f"gid:{gid}" if gid else fp),
+                            "status": "duplicate",
+                            "reason": "duplicate",
+                            "updated_at": NOW(),
+                        },
+                        "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": NOW()},
+                    },
+                    upsert=True,
+                )
+                hidden_count += 1
+        except HTTPException:
+            pass
+    await _activity(
+        pid, user["id"], "cleanup_clutter",
+        f"archived={len(archived_ids)},hidden={hidden_count}",
+    )
+    return {
+        "ok": True,
+        "archived_appointments": len(archived_ids),
+        "hidden_suggestions": hidden_count,
+        "message": "Clutter cleaned without deleting Google Calendar events.",
+    }
+
+
 class AppointmentArchiveBody(BaseModel):
     appointment_id: str
     archive: bool = True
