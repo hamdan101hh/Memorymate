@@ -208,6 +208,22 @@ export default function CreateAppointmentWithAI({ onSuccess }) {
               className="rounded-xl min-h-[80px] mb-3"
               data-testid="appt-ai-input"
             />
+            <div className="flex flex-wrap gap-2 mb-3">
+              {[
+                "Dentist at Dubai Mall tomorrow at 4 PM, remind me 1 hour before",
+                "Call Fadi next Monday at 5 PM",
+                "Family meeting Friday at 7 PM, make a Google Meet link",
+              ].map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => setPrompt(ex)}
+                  className="text-xs px-2.5 py-1 rounded-full border border-stone-200 bg-stone-50 hover:bg-sky-50 hover:border-sky-200 text-stone-600"
+                >
+                  {ex.length > 42 ? `${ex.slice(0, 42)}…` : ex}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={onDraft} disabled={busy === "draft" || !prompt.trim()}
                 className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="appt-ai-draft-btn">

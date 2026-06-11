@@ -4,194 +4,210 @@ import api from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import NotificationPermissionPrompt from "../../components/NotificationPermissionPrompt";
 import {
-  UserRound, CheckCircle2, AlertTriangle, Bell, Pill, CalendarClock,
-  Sparkles, Loader2, Clock, StickyNote, ArrowRight, Radio, Video, ShieldQuestion,
-  Infinity as InfinityIcon,
+  PageHeader, SummaryCard, CompactRow, ViewAllLink, LoadingState, MVP_DISCLAIMER, StatusBadge,
+} from "../../components/mvp";
+import {
+  CalendarClock, Bell, ShieldQuestion, Sparkles, Loader2, StickyNote, Plus, Radio,
+  CalendarDays, Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 
-const DURATION_LABEL = {
-  "1d": "for 1 day", "1w": "for 1 week", "1m": "for 1 month",
-  until_off: "until turned off", custom: "custom end date",
-};
-
 export default function CaregiverDashboard() {
-  const [d, setD] = useState({});
+  const [ov, setOv] = useState(null);
+  const [apptDash, setApptDash] = useState(null);
+  const [reminders, setReminders] = useState([]);
+  const [memories, setMemories] = useState([]);
+  const [review, setReview] = useState([]);
+  const [calStatus, setCalStatus] = useState(null);
   const [summary, setSummary] = useState("");
   const [gen, setGen] = useState(false);
 
   useEffect(() => {
     Promise.all([
-      api.get("/patient/overview"), api.get("/reminders"), api.get("/alerts"),
-      api.get("/memories"), api.get("/medications"), api.get("/appointments"), api.get("/notes"),
-      api.get("/capture/sessions"), api.get("/capture/review"), api.get("/capture/status"),
-    ]).then(([ov, rem, al, mem, med, ap, nt, cap, rev, st]) => {
-      setD({ ov: ov.data, reminders: rem.data, alerts: al.data, memories: mem.data, meds: med.data, appts: ap.data, notes: nt.data, sessions: cap.data, review: rev.data, status: st.data });
-    });
+      api.get("/patient/overview"),
+      api.get("/appointments/dashboard"),
+      api.get("/reminders"),
+      api.get("/memories"),
+      api.get("/capture/review"),
+      api.get("/calendar/status"),
+    ]).then(([ovRes, dashRes, remRes, memRes, revRes, calRes]) => {
+      setOv(ovRes.data);
+      setApptDash(dashRes.data);
+      setReminders(remRes.data);
+      setMemories(memRes.data);
+      setReview(revRes.data);
+      setCalStatus(calRes.data);
+    }).catch(() => toast.error("Could not load dashboard"));
   }, []);
 
   const generate = async () => {
     setGen(true);
-    try { const { data } = await api.post("/caregiver/summary"); setSummary(data.summary); }
-    catch { toast.error("Could not generate summary"); } finally { setGen(false); }
+    try {
+      const { data } = await api.post("/caregiver/summary");
+      setSummary(data.summary);
+    } catch {
+      toast.error("Could not generate summary");
+    } finally {
+      setGen(false);
+    }
   };
 
-  if (!d.ov) return <Loading />;
-  const ov = d.ov;
-  const missed = d.reminders.filter((r) => r.status === "missed");
-  const upcoming = d.reminders.filter((r) => r.status === "pending");
-  const openAlerts = d.alerts.filter((a) => a.status === "open");
+  if (!ov || !apptDash) return <LoadingState />;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todayReminders = reminders.filter((r) => r.due_date === today && r.status === "pending");
+  const urgentAppts = apptDash.groups?.urgent || [];
+  const todayAppts = apptDash.groups?.today || [];
+  const dupCount = apptDash.summary?.duplicates_hidden || 0;
+  const needsReview = (review || []).length;
+  const calConnected = calStatus?.connected;
+
+  const priorities = [
+    ...urgentAppts.slice(0, 2).map((a) => ({
+      key: a.id, title: a.title, sub: `${a.date || "—"} ${a.time || ""}`, tone: "border-l-rose-500", badge: "urgent",
+    })),
+    ...todayReminders.slice(0, 2).map((r) => ({
+      key: r.id, title: r.title, sub: `${r.due_date} ${r.due_time}`, tone: "border-l-amber-400", badge: "soon",
+    })),
+  ].slice(0, 5);
+
+  const upcoming = [
+    ...todayAppts,
+    ...(apptDash.groups?.tomorrow || []).slice(0, 2),
+    ...(apptDash.groups?.this_week || []).slice(0, 2),
+  ].slice(0, 5);
 
   return (
     <div data-testid="caregiver-dashboard">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="font-heading text-2xl sm:text-3xl font-bold">Today's overview</h1>
-          <p className="text-stone-500">Caring for <span className="font-medium text-stone-700">{ov.patient.full_name}</span></p>
-        </div>
-        <Button onClick={generate} disabled={gen} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="generate-summary-btn">
-          {gen ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />} Generate Caregiver Summary
-        </Button>
-      </div>
+      <PageHeader
+        title="Today's caregiver overview"
+        subtitle={`Caring for ${ov.patient?.full_name || "your patient"}`}
+        disclaimer={MVP_DISCLAIMER}
+        action={
+          <Button onClick={generate} disabled={gen} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="generate-summary-btn">
+            {gen ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+            Caregiver summary
+          </Button>
+        }
+      />
 
       <NotificationPermissionPrompt settingsPath="/caregiver/notifications" />
 
       {summary && (
-        <div className="mb-6 rounded-xl bg-sky-50 border border-sky-200 p-5" data-testid="ai-summary-card">
-          <div className="flex items-center gap-2 font-semibold text-sky-800 mb-2"><Sparkles className="w-5 h-5" /> AI Caregiver Summary</div>
-          <p className="whitespace-pre-wrap text-stone-700 leading-relaxed text-sm">{summary}</p>
+        <div className="mb-5 rounded-xl bg-sky-50 border border-sky-200 p-4" data-testid="ai-summary-card">
+          <p className="font-semibold text-sky-800 mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4" /> Caregiver summary</p>
+          <p className="whitespace-pre-wrap text-stone-700 text-sm leading-relaxed">{summary}</p>
         </div>
       )}
 
-      {d.status?.always_on && (
-        <div className="mb-6 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 flex flex-wrap items-center justify-between gap-3" data-testid="cg-capture-status">
-          <div className="flex items-center gap-3">
-            <span className={`grid place-items-center w-3.5 h-3.5 rounded-full ${d.status.paused ? "bg-amber-400" : "bg-emerald-500 animate-pulse"}`} />
-            <div>
-              <p className="font-semibold text-emerald-900 flex items-center gap-1.5">
-                <InfinityIcon className="w-4 h-4" /> Memory Capture is {d.status.paused ? "PAUSED" : "ON"} · {DURATION_LABEL[d.status.duration] || d.status.duration}
-              </p>
-              {d.status.last_captured && <p className="text-sm text-emerald-900/70">Last memory: {d.status.last_captured.title}</p>}
-            </div>
-          </div>
-          <Link to="/caregiver/capture/review" className="text-sm font-medium text-emerald-800 hover:text-emerald-900 inline-flex items-center gap-1">
-            {d.status.review_count || 0} to review <ArrowRight className="w-4 h-4" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <SummaryCard label="Urgent" value={apptDash.summary?.urgent_count || 0} tone="rose" />
+        <SummaryCard label="Today" value={(apptDash.summary?.today_count || 0) + todayReminders.length} tone="amber" />
+        <SummaryCard label="Needs review" value={needsReview + (apptDash.summary?.needs_review_count || 0)} tone="stone" />
+        <SummaryCard label="Calendar" value={calConnected ? "Connected" : "Not linked"} tone={calConnected ? "emerald" : "stone"} />
+      </div>
+
+      {dupCount > 0 && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-wrap items-center justify-between gap-3" data-testid="dup-notice">
+          <p className="text-sm text-amber-900">
+            <Copy className="w-4 h-4 inline mr-1" />
+            {dupCount} duplicate appointment{dupCount !== 1 ? "s" : ""} hidden from the main list.
+          </p>
+          <Link to="/caregiver/appointments" className="text-sm font-medium text-sky-700 hover:text-sky-800">
+            Review duplicates →
           </Link>
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-testid="capture-quick-actions">
-        <QuickAction to="/caregiver/capture" icon={Radio} color="bg-sky-600" label="Start capture session" />
-        <QuickAction to="/caregiver/capture/sessions" icon={Video} color="bg-violet-600" label="Active sessions"
-          badge={(d.sessions || []).filter((s) => ["active", "paused"].includes(s.status)).length} />
-        <QuickAction to="/caregiver/capture/sessions" icon={Sparkles} color="bg-emerald-600" label="Meeting summaries"
-          badge={(d.sessions || []).filter((s) => s.status === "completed").length} />
-        <QuickAction to="/caregiver/capture/review" icon={ShieldQuestion} color="bg-amber-500" label="Pending privacy review"
-          badge={(d.review || []).length} />
+      <div className="grid lg:grid-cols-2 gap-4 mb-5">
+        <section className="bg-white border border-stone-200 rounded-xl p-4">
+          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><Bell className="w-4 h-4 text-stone-400" /> Today&apos;s priorities</h2>
+          {priorities.length === 0 ? (
+            <p className="text-sm text-stone-400">Nothing urgent right now.</p>
+          ) : (
+            <div className="space-y-2">
+              {priorities.map((p) => (
+                <CompactRow
+                  key={p.key}
+                  title={p.title}
+                  sub={p.sub}
+                  borderClass={p.tone}
+                  badges={<StatusBadge variant={p.badge}>{p.badge === "urgent" ? "Urgent" : "Today"}</StatusBadge>}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white border border-stone-200 rounded-xl p-4">
+          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-stone-400" /> Upcoming appointments</h2>
+          {upcoming.length === 0 ? (
+            <p className="text-sm text-stone-400">No upcoming appointments.</p>
+          ) : (
+            <div className="space-y-2">
+              {upcoming.map((a) => (
+                <CompactRow key={a.id} title={a.title} sub={`${a.date || "—"} ${a.time || ""}`} borderClass="border-l-sky-400" />
+              ))}
+            </div>
+          )}
+          <ViewAllLink to="/caregiver/appointments" />
+        </section>
+
+        <section className="bg-white border border-stone-200 rounded-xl p-4">
+          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-stone-400" /> Recent memories</h2>
+          {memories.length === 0 ? (
+            <p className="text-sm text-stone-400">No memories yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {memories.slice(0, 3).map((m) => (
+                <CompactRow key={m.id} title={m.title} sub={m.simple_summary} />
+              ))}
+            </div>
+          )}
+          <ViewAllLink to="/caregiver/timeline" label="View timeline" />
+        </section>
+
+        <section className="bg-white border border-stone-200 rounded-xl p-4">
+          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><ShieldQuestion className="w-4 h-4 text-stone-400" /> Privacy review</h2>
+          {needsReview === 0 ? (
+            <p className="text-sm text-stone-400">Nothing needs review.</p>
+          ) : (
+            <div className="space-y-2">
+              {review.slice(0, 3).map((r) => (
+                <CompactRow key={r.id} title={r.title || "Memory capture"} sub={r.reason || "Pending review"} borderClass="border-l-amber-400" />
+              ))}
+            </div>
+          )}
+          <ViewAllLink to="/caregiver/capture/review" />
+        </section>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Stat icon={CheckCircle2} color="emerald" label="Completed" value={ov.reminders_completed} />
-        <Stat icon={Clock} color="sky" label="Pending" value={ov.reminders_pending} />
-        <Stat icon={AlertTriangle} color="red" label="Missed" value={ov.reminders_missed} />
-        <Stat icon={UserRound} color="violet" label="Memories" value={ov.total_memories} />
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-5">
-        <Panel title="Patient overview" icon={UserRound} to="/caregiver/overview">
-          <p className="text-lg font-semibold">{ov.patient.full_name}{ov.patient.age ? `, ${ov.patient.age}` : ""}</p>
-          <p className="text-sm text-stone-500">Emergency: {ov.patient.emergency_contact_name || "—"} {ov.patient.emergency_contact_phone}</p>
-          {ov.recent_summary && <p className="mt-3 text-sm text-stone-600 bg-stone-50 rounded-lg p-3">“{ov.recent_summary}”</p>}
-        </Panel>
-
-        <Panel title="Alerts" icon={AlertTriangle} to="/caregiver/alerts" badge={openAlerts.length}>
-          {openAlerts.length === 0 ? <Empty text="No active alerts." /> :
-            openAlerts.slice(0, 3).map((a) => (
-              <Row key={a.id} title={a.message} sub={a.alert_type} tone={a.priority === "high" ? "red" : "amber"} />
-            ))}
-        </Panel>
-
-        <Panel title="Missed reminders" icon={Bell} to="/caregiver/reminders" badge={missed.length}>
-          {missed.length === 0 ? <Empty text="Nothing missed. Great!" /> :
-            missed.slice(0, 4).map((r) => <Row key={r.id} title={r.title} sub={`${r.due_date} ${r.due_time}`} tone="red" />)}
-        </Panel>
-
-        <Panel title="Upcoming reminders" icon={Bell} to="/caregiver/reminders">
-          {upcoming.length === 0 ? <Empty text="No upcoming reminders." /> :
-            upcoming.slice(0, 4).map((r) => <Row key={r.id} title={r.title} sub={`${r.due_date} ${r.due_time}`} />)}
-        </Panel>
-
-        <Panel title="Medication schedule" icon={Pill} to="/caregiver/medication">
-          {d.meds.length === 0 ? <Empty text="No medications added." /> :
-            d.meds.slice(0, 4).map((m) => <Row key={m.id} title={m.medication_name} sub={`${m.dosage} · ${m.time_of_day}`} />)}
-        </Panel>
-
-        <Panel title="Appointments" icon={CalendarClock} to="/caregiver/appointments">
-          {d.appts.length === 0 ? <Empty text="No appointments." /> :
-            d.appts.slice(0, 4).map((a) => <Row key={a.id} title={a.title} sub={`${a.date} ${a.time}`} />)}
-        </Panel>
-
-        <Panel title="Recent memories" icon={Clock} to="/caregiver/timeline">
-          {d.memories.length === 0 ? <Empty text="No memories yet." /> :
-            d.memories.slice(0, 3).map((m) => <Row key={m.id} title={m.title} sub={m.simple_summary} />)}
-        </Panel>
-
-        <Panel title="Caregiver notes" icon={StickyNote} to="/caregiver/notes">
-          {d.notes.length === 0 ? <Empty text="No notes yet." /> :
-            d.notes.slice(0, 3).map((n) => <Row key={n.id} title={n.note_text} />)}
-        </Panel>
-      </div>
-    </div>
-  );
-}
-
-const COLORS = {
-  emerald: "bg-emerald-100 text-emerald-700", sky: "bg-sky-100 text-sky-700",
-  red: "bg-red-100 text-red-700", violet: "bg-violet-100 text-violet-700",
-};
-function Stat({ icon: Icon, color, label, value }) {
-  return (
-    <div className="bg-white border border-stone-200 rounded-xl p-4">
-      <span className={`grid place-items-center w-10 h-10 rounded-lg ${COLORS[color]}`}><Icon className="w-5 h-5" /></span>
-      <p className="mt-3 text-2xl font-bold font-heading">{value}</p>
-      <p className="text-sm text-stone-500">{label}</p>
-    </div>
-  );
-}
-function Panel({ title, icon: Icon, to, badge, children }) {
-  return (
-    <div className="bg-white border border-stone-200 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 font-semibold"><Icon className="w-5 h-5 text-stone-400" /> {title}
-          {badge > 0 && <span className="text-xs bg-red-100 text-red-700 rounded-full px-2 py-0.5">{badge}</span>}
+      <section className="bg-white border border-stone-200 rounded-xl p-4" data-testid="capture-quick-actions">
+        <h2 className="font-semibold text-sm mb-3">Quick actions</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <QuickLink to="/caregiver/appointments" icon={Sparkles} label="Create with AI" />
+          <QuickLink to="/caregiver/reminders" icon={Plus} label="Add reminder" />
+          <QuickLink to="/caregiver/notes" icon={StickyNote} label="Caregiver note" />
+          <QuickLink to="/caregiver/calendar" icon={CalendarDays} label="Open calendar" />
+          <QuickLink to="/caregiver/appointments" icon={Copy} label="Review duplicates" badge={dupCount || null} />
+          <QuickLink to="/caregiver/capture" icon={Radio} label="Record memory" />
         </div>
-        <Link to={to} className="text-sky-600 hover:text-sky-700" aria-label="Open"><ArrowRight className="w-4 h-4" /></Link>
-      </div>
-      <div className="space-y-2">{children}</div>
+      </section>
     </div>
   );
 }
-function Row({ title, sub, tone }) {
-  const dot = tone === "red" ? "bg-red-500" : tone === "amber" ? "bg-amber-500" : "bg-sky-500";
-  return (
-    <div className="flex items-start gap-2">
-      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${dot}`} />
-      <div className="min-w-0">
-        <p className="text-sm font-medium truncate">{title}</p>
-        {sub && <p className="text-xs text-stone-500 truncate">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-const Empty = ({ text }) => <p className="text-sm text-stone-400">{text}</p>;
-const Loading = () => <div className="grid place-items-center py-20"><Loader2 className="w-7 h-7 animate-spin text-sky-600" /></div>;
 
-function QuickAction({ to, icon: Icon, color, label, badge }) {
+function QuickLink({ to, icon: Icon, label, badge }) {
   return (
-    <Link to={to} className="bg-white border border-stone-200 rounded-xl p-4 hover:border-sky-300 hover:shadow-sm transition-all relative" data-testid={`quick-${label.toLowerCase().replace(/\s+/g, "-")}`}>
-      <span className={`grid place-items-center w-10 h-10 rounded-lg text-white ${color}`}><Icon className="w-5 h-5" /></span>
-      {badge > 0 && <span className="absolute top-3 right-3 bg-red-100 text-red-700 text-xs rounded-full px-2 py-0.5">{badge}</span>}
-      <p className="mt-3 text-sm font-medium leading-tight">{label}</p>
+    <Link
+      to={to}
+      className="flex flex-col items-center gap-2 rounded-xl border border-stone-200 p-3 text-center hover:border-sky-300 hover:bg-sky-50/50 transition-colors min-h-[88px] relative"
+    >
+      {badge > 0 && (
+        <span className="absolute top-2 right-2 text-[10px] bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5">{badge}</span>
+      )}
+      <Icon className="w-5 h-5 text-sky-600" />
+      <span className="text-xs font-medium leading-tight">{label}</span>
     </Link>
   );
 }

@@ -38,12 +38,12 @@ function useClock() {
 }
 
 const TILES = [
-  { to: "record", icon: Mic, title: "Record a Memory", color: "bg-sky-600", testid: "tile-record" },
-  { to: "assistant", icon: MessageCircleHeart, title: "Ask My Assistant", color: "bg-emerald-600", testid: "tile-assistant" },
-  { to: "today", icon: Sun, title: "Today's Summary", color: "bg-amber-500", testid: "tile-today" },
-  { to: "reminders", icon: Bell, title: "My Reminders", color: "bg-violet-600", testid: "tile-reminders" },
-  { to: "people", icon: Users, title: "Important People", color: "bg-rose-500", testid: "tile-people" },
-  { to: "memory-book", icon: BookHeart, title: "My Memory Book", color: "bg-fuchsia-600", testid: "tile-memory-book" },
+  { to: "record", icon: Mic, title: "Record a memory", color: "bg-sky-600", testid: "tile-record" },
+  { to: "assistant", icon: MessageCircleHeart, title: "Ask my assistant", color: "bg-emerald-600", testid: "tile-assistant" },
+  { to: "today", icon: Sun, title: "What's happening today?", color: "bg-amber-500", testid: "tile-today" },
+  { to: "reminders", icon: Bell, title: "My reminders", color: "bg-violet-600", testid: "tile-reminders" },
+  { to: "people", icon: Users, title: "Important people", color: "bg-rose-500", testid: "tile-people" },
+  { to: "memory-book", icon: BookHeart, title: "My memory book", color: "bg-fuchsia-600", testid: "tile-memory-book" },
 ];
 
 export default function PatientHome() {
@@ -61,9 +61,11 @@ export default function PatientHome() {
         <p className="text-sky-100 text-lg">{dateStr} · {timeStr}</p>
         <h1 className="font-heading text-3xl sm:text-4xl font-extrabold mt-1">{greet}, {firstName}</h1>
         <p className="mt-4 text-sky-50 text-lg leading-relaxed">
-          You are safe. Your reminders and memories are here. 💙
+          Your reminders and memories are here. MemoryMate helps organize daily life — it is not emergency support.
         </p>
       </div>
+
+      <TodayAtAGlance />
 
       <div className="mt-6">
         <NotificationPermissionPrompt settingsPath="/patient/notifications" />
@@ -85,11 +87,47 @@ export default function PatientHome() {
           <span className="grid place-items-center w-16 h-16 rounded-2xl bg-red-600 text-white shrink-0 animate-pulse">
             <Phone className="w-9 h-9" strokeWidth={2} />
           </span>
-          <span className="font-heading text-xl sm:text-2xl font-bold text-red-700">Emergency Contact</span>
+          <span className="font-heading text-xl sm:text-2xl font-bold text-red-700">Call for help</span>
         </Link>
       </div>
 
       <CaptureSection />
+    </div>
+  );
+}
+
+function TodayAtAGlance() {
+  const [data, setData] = useState({ reminders: [], appt: null, people: [] });
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    Promise.all([
+      api.get("/reminders"),
+      api.get("/appointments"),
+      api.get("/people"),
+    ]).then(([rem, ap, pe]) => {
+      const reminders = (rem.data || []).filter((r) => r.due_date === today && r.status === "pending").slice(0, 3);
+      const appts = (ap.data || []).filter((a) => a.date && a.date >= today && a.status !== "completed");
+      const next = appts.sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))[0];
+      setData({ reminders, appt: next, people: (pe.data || []).slice(0, 3) });
+    }).catch((e) => logError("today glance", e));
+  }, []);
+
+  if (!data.reminders.length && !data.appt && !data.people.length) return null;
+
+  return (
+    <div className="mt-5 bg-white border border-stone-200 rounded-2xl p-5" data-testid="patient-today-glance">
+      <h2 className="font-heading text-lg font-semibold mb-3">Today at a glance</h2>
+      <div className="space-y-2 text-sm">
+        {data.appt && (
+          <p><span className="text-stone-500">Next appointment:</span> <strong>{data.appt.title}</strong> — {data.appt.date} {data.appt.time || ""}</p>
+        )}
+        {data.reminders.length > 0 && (
+          <p><span className="text-stone-500">Reminders today:</span> {data.reminders.map((r) => r.title).join(", ")}</p>
+        )}
+        {data.people.length > 0 && (
+          <p><span className="text-stone-500">Important people:</span> {data.people.map((p) => p.name).join(", ")}</p>
+        )}
+      </div>
     </div>
   );
 }
