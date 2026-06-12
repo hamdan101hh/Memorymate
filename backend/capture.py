@@ -13,6 +13,7 @@ import ai
 import ai_pipeline
 import usage
 import capture_meaningfulness as meaning
+import image_storage as imgs
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
 NOW = lambda: datetime.now(timezone.utc).isoformat()
@@ -523,17 +524,24 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add a transcript to process.")
 
+    img_ctx = await imgs.image_context_text(db, pid, session_id=sid)
+    img_count = await imgs.count_draft_images(db, pid, sid)
     meta = {
         "title": s["title"],
         "purpose": s.get("purpose", ""),
         "people_involved": s.get("people_involved", ""),
         "note_style": settings.get("note_style"),
         "mode": s.get("mode"),
+        "image_context": img_ctx,
+        "image_count": img_count,
     }
+    transcript = body.transcript.strip()
+    if img_ctx:
+        transcript = f"{transcript}\n\n{img_ctx}"
     now = NOW()
     meeting_mins = body.meeting_minutes
     pipeline_out = await ai_pipeline.process_meeting_transcript(
-        pid, body.transcript, meta, meeting_minutes=meeting_mins,
+        pid, transcript, meta, meeting_minutes=meeting_mins,
     )
     result = pipeline_out["filter_result"]
     meeting_summary = pipeline_out.get("meeting_summary")
@@ -541,7 +549,7 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
                       for ev in result.get("events", [])]
     created_reviews = await _persist_reviews(pid, sid, result.get("review_items", []), now)
 
-    await _finalize_session(s, sid, body.transcript, now, meeting_summary)
+    await _finalize_session(s, sid, transcript, now, meeting_summary)
     locked_count = sum(1 for e in created_events if e.get("privacy_level") == "sensitive")
     return {
         "events": [_redact(e) for e in created_events],

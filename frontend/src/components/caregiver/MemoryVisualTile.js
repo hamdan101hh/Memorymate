@@ -1,14 +1,16 @@
 import { getMemoryVisual } from "../../lib/memoryVisuals";
+import AuthenticatedImage from "../AuthenticatedImage";
 
 export default function MemoryVisualTile({ memory, compact }) {
   const visual = getMemoryVisual(memory);
   const Icon = visual.icon;
-  const hasImage = memory?.image_url || memory?.photo_url;
+  const imagePath = memory?.image_url || memory?.photo_url;
+  const hasImage = imagePath && imagePath.startsWith("/api/");
 
   if (hasImage) {
     return (
-      <img
-        src={memory.image_url || memory.photo_url}
+      <AuthenticatedImage
+        path={imagePath}
         alt=""
         className={`rounded-lg object-cover shrink-0 ${compact ? "w-12 h-12" : "w-full h-24"}`}
       />

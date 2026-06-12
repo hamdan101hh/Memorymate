@@ -22,3 +22,7 @@ async def ensure_indexes():
     await db.calendar_links.create_index("patient_id", unique=True)
     await db.calendar_activity.create_index([("patient_id", 1), ("created_at", -1)])
     await db.smart_day_drafts.create_index([("patient_id", 1), ("status", 1), ("expires_at", 1)])
+    await db.memory_image_attachments.create_index("id", unique=True)
+    await db.memory_image_attachments.create_index([("patient_id", 1), ("status", 1)])
+    await db.memory_image_attachments.create_index([("patient_id", 1), ("capture_session_id", 1)])
+    await db.memory_image_attachments.create_index("expires_at")

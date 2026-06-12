@@ -15,6 +15,7 @@ import usage
 import appointment_dashboard as apdash
 import appointment_ai
 import duplicate_helpers as duph
+import image_storage as imgs
 
 router = APIRouter(prefix="/api", tags=["app"])
 
@@ -109,10 +110,13 @@ class MemoryCreate(BaseModel):
     location: Optional[dict] = None  # optional {lat, lng, label} when location is enabled
     skip_ai: bool = False  # save exactly as written without AI enhancement
     use_draft: Optional[dict] = None  # pre-reviewed draft from POST /memories/draft
+    image_ids: List[str] = []
+    permission_confirmed: bool = False
 
 
 class MemoryDraftBody(BaseModel):
     transcript: str
+    image_ids: List[str] = []
 
 
 def _bucket_now() -> str:
@@ -123,6 +127,7 @@ def _bucket_now() -> str:
 async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[str] = None,
                                   source: str = "manual", location: Optional[dict] = None,
                                   skip_ai: bool = False, use_draft: Optional[dict] = None,
+                                  image_ids: Optional[List[str]] = None,
                                   by_user_id: str = "system", by_role: str = "patient") -> dict:
     """Shared memory pipeline: AI extraction + persistence + auto-reminders.
 
@@ -164,6 +169,10 @@ async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[
         "created_at": now,
     }
     await db.memories.insert_one(memory)
+    if image_ids:
+        await imgs.link_images_to_memory(db, pid, mem_id, image_ids)
+        memory["image_url"] = imgs.public_image_path(image_ids[0])
+        memory["image_ids"] = image_ids[:imgs.MAX_IMAGES_PER_NOTE]
     for r in extracted.get("reminders", []):
         await db.reminders.insert_one({
             "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": by_user_id,
@@ -181,9 +190,15 @@ async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_use
     pid = await patient_id_for(user)
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add some text before saving.")
+    if body.image_ids and not body.permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
+    transcript = body.transcript
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=body.image_ids or None)
+    if img_ctx:
+        transcript = f"{transcript.strip()}\n\n{img_ctx}"
     return await save_memory_for_patient(
-        pid, body.transcript, title=body.title, source=body.source, location=body.location,
-        skip_ai=body.skip_ai, use_draft=body.use_draft,
+        pid, transcript, title=body.title, source=body.source, location=body.location,
+        skip_ai=body.skip_ai, use_draft=body.use_draft, image_ids=body.image_ids or None,
         by_user_id=user["id"], by_role=user["role"])
 
 
@@ -193,9 +208,13 @@ async def memory_draft(body: MemoryDraftBody, user: dict = Depends(get_current_u
     pid = await patient_id_for(user)
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add some text to enhance.")
+    transcript = body.transcript.strip()
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=body.image_ids or None)
+    if img_ctx:
+        transcript = f"{transcript}\n\n{img_ctx}"
     _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
     result = await ai_pipeline.extract_memory_fields(
-        pid, body.transcript.strip(), style=_sdoc.get("note_style"))
+        pid, transcript, style=_sdoc.get("note_style"))
     return {
         "draft": result["fields"],
         "transcript": body.transcript.strip(),

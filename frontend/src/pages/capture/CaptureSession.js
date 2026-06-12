@@ -7,11 +7,14 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
+import api, { formatApiError } from "../../lib/api";
+import MemoryImageAttachments from "../../components/MemoryImageAttachments";
 import {
   Pause, Play, Square, Plus, Loader2, Sparkles, Bell, Users, MapPin,
   Pill, CalendarClock, Lock, ShieldQuestion, CheckCircle2, ArrowLeft, ListChecks,
   Mic, MicOff, Infinity as InfinityIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 const TYPE_BADGE = {
   memory_event: { icon: Sparkles, c: "bg-sky-50 text-sky-700" },
@@ -221,14 +224,65 @@ function MeetingSummary({ s }) {
       <Block title="People mentioned" items={s.people} />
       <Block title="Dates mentioned" items={s.dates} />
       <Block title="Next steps" items={s.next_steps} />
+      {s.disclaimer && (
+        <p className="mt-3 text-xs text-amber-800 font-medium" data-testid="meeting-finance-disclaimer">{s.disclaimer}</p>
+      )}
     </div>
   );
 }
 
-function SessionSummary({ result, isMeeting, base, navigate }) {
+function SessionSummary({ result, isMeeting, base, navigate, session }) {
+  const [attachedImages, setAttachedImages] = useState([]);
+  const [savePermission, setSavePermission] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+
+  const saveMeetingNote = async () => {
+    const imageIds = attachedImages.map((i) => i.id);
+    if (imageIds.length && !savePermission) {
+      toast.error("Please confirm before saving.");
+      return;
+    }
+    setSavingNote(true);
+    try {
+      await api.post(`/capture/sessions/${session.id}/save-meeting-note`, {
+        permission_confirmed: true,
+        image_ids: imageIds,
+      });
+      toast.success("Meeting note saved to memories.");
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || "Could not save meeting note.");
+    } finally {
+      setSavingNote(false);
+    }
+  };
   return (
     <div data-testid="session-summary">
       {isMeeting && result.meeting_summary && <MeetingSummary s={result.meeting_summary} />}
+
+      {isMeeting && (
+        <div className="mb-6">
+          <MemoryImageAttachments
+            captureSessionId={session.id}
+            onImagesChange={setAttachedImages}
+            sectionTitle="Meeting photos"
+            sectionSubtitle="Add a photo of a board, notes, slide, place, or document to help MemoryMate create a better summary."
+          />
+          {attachedImages.length > 0 && (
+            <label className="mt-3 flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+              <input type="checkbox" checked={savePermission} onChange={(e) => setSavePermission(e.target.checked)} data-testid="meeting-save-permission" />
+              I have permission to save attached photos with this meeting note.
+            </label>
+          )}
+          <Button
+            onClick={saveMeetingNote}
+            disabled={savingNote}
+            className="mt-4 w-full h-12 rounded-xl bg-violet-600 hover:bg-violet-700"
+            data-testid="save-meeting-note-btn"
+          >
+            {savingNote ? <Loader2 className="w-5 h-5 animate-spin" /> : "Save meeting note to memories"}
+          </Button>
+        </div>
+      )}
 
       <h2 className="font-heading text-xl font-bold mb-1 mt-2">Memory events</h2>
       <p className="text-sm text-stone-500 mb-3">The AI filtered the conversation and saved only useful memory-support information.</p>
@@ -278,10 +332,17 @@ export default function CaptureSession() {
         <>
           <ActiveCaptureBanner session={session} status={status} onStatus={changeStatus} onFocusNote={() => noteRef.current?.focus()} />
           <CaptureInputs isMeeting={isMeeting} processing={processing} onAddNote={addNote} onProcess={process} onAppend={append} noteRef={noteRef} />
+          {isMeeting && (
+            <MemoryImageAttachments
+              captureSessionId={session.id}
+              sectionTitle="Meeting photos"
+              sectionSubtitle="Add a photo of a board, notes, slide, place, or document to help MemoryMate create a better summary."
+            />
+          )}
         </>
       )}
 
-      {result && <SessionSummary result={result} isMeeting={isMeeting} base={base} navigate={navigate} />}
+      {result && <SessionSummary result={result} isMeeting={isMeeting} base={base} navigate={navigate} session={session} />}
     </div>
   );
 }

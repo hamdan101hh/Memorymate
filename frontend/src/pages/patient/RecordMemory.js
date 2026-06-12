@@ -13,6 +13,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Mic, Square, Loader2, Sparkles, CheckCircle2, Bell, Users, Pill, MapPin, Type, X } from "lucide-react";
 import { toast } from "sonner";
+import MemoryImageAttachments from "../../components/MemoryImageAttachments";
 
 export default function RecordMemory() {
   const navigate = useNavigate();
@@ -31,6 +32,8 @@ export default function RecordMemory() {
   const [locationPreview, setLocationPreview] = useState(null);
   const [captureLanguage, setCaptureLanguage] = useState("auto");
   const [speechUnsupported, setSpeechUnsupported] = useState(false);
+  const [attachedImages, setAttachedImages] = useState([]);
+  const [savePermission, setSavePermission] = useState(false);
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
   const speechRef = useRef(null);
@@ -143,7 +146,8 @@ export default function RecordMemory() {
     }
     setEnhancing(true);
     try {
-      const { data } = await api.post("/memories/draft", { transcript: transcript.trim() });
+      const imageIds = attachedImages.map((i) => i.id);
+      const { data } = await api.post("/memories/draft", { transcript: transcript.trim(), image_ids: imageIds });
       setDraft(data.draft);
       setPhase("review");
     } catch (err) {
@@ -178,6 +182,12 @@ export default function RecordMemory() {
       if (locationEnabled && attachLocation && locationPreview) {
         location = locationPreview;
       }
+      const imageIds = attachedImages.map((i) => i.id);
+      if (imageIds.length && !savePermission) {
+        toast.error("Please confirm you have permission to save attached photos.");
+        setSaving(false);
+        return;
+      }
       const body = {
         transcript: skipAi ? transcript.trim() : transcript.trim(),
         source,
@@ -185,6 +195,8 @@ export default function RecordMemory() {
         skip_ai: skipAi,
         use_draft: skipAi ? null : draft,
         title: skipAi ? undefined : draft?.title,
+        image_ids: imageIds,
+        permission_confirmed: imageIds.length ? savePermission : false,
       };
       const { data } = await api.post("/memories", body);
       setResult(data);
@@ -204,6 +216,8 @@ export default function RecordMemory() {
     setTranscript("");
     setLocationPreview(null);
     setAttachLocation(false);
+    setAttachedImages([]);
+    setSavePermission(false);
   };
 
   if (phase === "saved" && result) {
@@ -253,6 +267,12 @@ export default function RecordMemory() {
             <p className="text-sm flex items-center gap-1 text-sky-700"><MapPin className="w-4 h-4" /> {locationPreview.label}</p>
           )}
         </div>
+        {attachedImages.length > 0 && (
+          <label className="mt-4 flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+            <input type="checkbox" checked={savePermission} onChange={(e) => setSavePermission(e.target.checked)} data-testid="save-photo-permission" />
+            I have permission to save attached photos with this memory.
+          </label>
+        )}
         <div className="mt-6 flex flex-col gap-3">
           <Button onClick={() => saveWithDraft(false)} disabled={saving} className="h-14 rounded-2xl bg-emerald-600 text-lg" data-testid="save-memory-btn">
             {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : "Save memory"}
@@ -320,6 +340,14 @@ export default function RecordMemory() {
           placeholder="Example: Today my daughter Sarah came to visit. We went to the clinic at 3 PM."
           className="mt-2 min-h-[160px] rounded-2xl text-lg p-4"
           data-testid="transcript-input"
+        />
+      </div>
+
+      <div className="mt-5">
+        <MemoryImageAttachments
+          onImagesChange={setAttachedImages}
+          sectionTitle="Memory photos"
+          sectionSubtitle="Add a photo of notes, a place, or a document to help MemoryMate create a better summary."
         />
       </div>
 

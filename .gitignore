@@ -81,6 +81,7 @@ agenthub/agents/youtube/db
 # Local dev tooling (standalone MongoDB + data)
 .local-mongo/
 backend/.venv/
+backend/uploads/
 
 # Local server logs
 *.log
