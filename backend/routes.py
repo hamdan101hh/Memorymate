@@ -4,12 +4,13 @@ import uuid
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, EmailStr
 
 from db import db
 from auth import get_current_user, require_role, _log
 import ai
+import ai_pipeline
 import usage
 import appointment_dashboard as apdash
 import appointment_ai
@@ -192,12 +193,17 @@ async def memory_draft(body: MemoryDraftBody, user: dict = Depends(get_current_u
     pid = await patient_id_for(user)
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add some text to enhance.")
-    await usage.assert_within_cap(pid)
     _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
-    extracted = await ai.process_transcript(body.transcript.strip(), style=_sdoc.get("note_style"))
-    await usage.record(pid, "memory_draft", in_chars=len(body.transcript),
-                       out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
-    return {"draft": extracted, "transcript": body.transcript.strip()}
+    result = await ai_pipeline.extract_memory_fields(
+        pid, body.transcript.strip(), style=_sdoc.get("note_style"))
+    return {
+        "draft": result["fields"],
+        "transcript": body.transcript.strip(),
+        "confidence": result.get("confidence"),
+        "clarification_question": result.get("clarification_question"),
+        "providers_used": result.get("providers_used", 0),
+        "premium_used": result.get("premium_used", False),
+    }
 
 
 @router.get("/memories")
@@ -211,23 +217,33 @@ async def list_memories(today: bool = False, user: dict = Depends(get_current_us
 
 
 @router.post("/memories/transcribe")
-async def transcribe(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    await patient_id_for(user)
+async def transcribe(
+    file: UploadFile = File(...),
+    cloud_confirmed: bool = Form(False),
+    duration_seconds: Optional[float] = Form(None),
+    user: dict = Depends(get_current_user),
+):
+    pid = await patient_id_for(user)
     data = await file.read()
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Recording is too large (max 25MB).")
     if not data:
         raise HTTPException(status_code=400, detail="The recording was empty. Please try again or type instead.")
-    # Initialise before all code paths so the response can never reference an undefined value.
-    text = ""
     try:
-        text = await ai.transcribe_audio(data, file.filename or "audio.webm")
+        result = await ai_pipeline.transcribe_audio_cost_safe(
+            pid, data, file.filename or "audio.webm",
+            user_confirmed_cloud=cloud_confirmed,
+            duration_seconds=duration_seconds,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[transcribe] {e}")
         raise HTTPException(status_code=500, detail="Could not transcribe the audio. Please try again or type instead.")
-    if not (text or "").strip():
+    text = (result.get("transcript") or "").strip()
+    if not text:
         raise HTTPException(status_code=502, detail="No words were detected. Please try again or type instead.")
-    return {"transcript": text}
+    return result
 
 
 # ---------------- reminders ----------------
@@ -289,11 +305,7 @@ async def enhance_reminder(body: ReminderEnhanceBody, user: dict = Depends(get_c
     pid = await patient_id_for(user)
     if not body.raw_text.strip():
         raise HTTPException(status_code=400, detail="Please type a reminder first.")
-    await usage.assert_within_cap(pid)
-    result = await ai.enhance_reminder_text(body.raw_text.strip())
-    await usage.record(pid, "reminder_enhance", in_chars=len(body.raw_text),
-                       out_chars=len(result.get("enhanced_text", "")), tier="cheap")
-    return result
+    return await ai_pipeline.extract_reminder_fields(pid, body.raw_text.strip())
 
 
 @router.delete("/reminders/{rid}")
@@ -1206,6 +1218,14 @@ async def chat_save_reminder(body: ChatReminderBody, user: dict = Depends(get_cu
     }
     await db.reminders.insert_one(doc)
     return {k: v for k, v in doc.items() if k != "_id"}
+
+
+# ---------------- AI pipeline (cost-safe) ----------------
+@router.get("/ai/pipeline-config")
+async def ai_pipeline_config(user: dict = Depends(get_current_user)):
+    """Public pipeline flags for frontend — no secrets."""
+    await patient_id_for(user)
+    return ai_pipeline.public_config()
 
 
 # ---------------- AI usage ----------------

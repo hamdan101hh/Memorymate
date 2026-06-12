@@ -123,7 +123,7 @@ def _extract_json(text: str) -> dict:
         return json.loads(cleaned)
 
 
-async def process_transcript(transcript: str, style: str | None = None) -> dict:
+async def process_transcript(transcript: str, style: str | None = None, premium: bool = False) -> dict:
     """Turn a raw memory transcript into a structured summary + extractions."""
     fallback = {
         "title": "Memory note",
@@ -151,7 +151,7 @@ async def process_transcript(transcript: str, style: str | None = None) -> dict:
         + _note_style_hint(style)
     )
     try:
-        chat = _chat(system, cheap=True)
+        chat = _chat(system, cheap=not premium)
         resp = await chat.send_message(UserMessage(text=f"Transcript:\n{transcript}"))
         data = _extract_json(resp)
         for key in fallback:

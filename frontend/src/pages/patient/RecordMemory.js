@@ -100,6 +100,7 @@ export default function RecordMemory() {
       };
       mr.start();
       mediaRef.current = mr;
+      mediaRef.current._startTime = Date.now();
       setRecording(true);
     } catch {
       toast.error("Microphone not available. You can type your memory instead.");
@@ -120,6 +121,10 @@ export default function RecordMemory() {
     try {
       const fd = new FormData();
       fd.append("file", blob, "memory.webm");
+      fd.append("cloud_confirmed", "true");
+      if (mediaRef.current?._startTime) {
+        fd.append("duration_seconds", String((Date.now() - mediaRef.current._startTime) / 1000));
+      }
       const { data } = await api.post("/memories/transcribe", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setTranscript((prev) => (prev ? `${prev} ` : "") + data.transcript);
       setSource("voice");

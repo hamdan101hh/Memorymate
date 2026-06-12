@@ -10,6 +10,7 @@ from db import db
 from auth import get_current_user, _log, hash_password, verify_password
 from routes import patient_id_for
 import ai
+import ai_pipeline
 import usage
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
@@ -396,6 +397,7 @@ async def add_note(sid: str, body: ManualNote, user: dict = Depends(get_current_
 
 class ProcessBody(BaseModel):
     transcript: str
+    meeting_minutes: Optional[float] = None
 
 
 async def _route_event_to_tables(pid: str, user_id: str, etype: str, ev: dict, now: str) -> None:
@@ -508,24 +510,23 @@ async def process_session(sid: str, body: ProcessBody, user: dict = Depends(get_
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add a transcript to process.")
 
-    # Cost guard: refuse if this patient has hit today's AI ceiling.
-    await usage.assert_within_cap(pid)
-
-    meta = {"title": s["title"], "purpose": s.get("purpose", ""), "people_involved": s.get("people_involved", "")}
+    meta = {
+        "title": s["title"],
+        "purpose": s.get("purpose", ""),
+        "people_involved": s.get("people_involved", ""),
+        "note_style": settings.get("note_style"),
+        "mode": s.get("mode"),
+    }
     now = NOW()
-
-    # AI filter + divide into discrete, classified events.
-    result = await ai.filter_capture_transcript(body.transcript, meta, style=settings.get("note_style"))
+    meeting_mins = body.meeting_minutes
+    pipeline_out = await ai_pipeline.process_meeting_transcript(
+        pid, body.transcript, meta, meeting_minutes=meeting_mins,
+    )
+    result = pipeline_out["filter_result"]
+    meeting_summary = pipeline_out.get("meeting_summary")
     created_events = [await _persist_event(pid, sid, user["id"], ev, now, s["title"])
                       for ev in result.get("events", [])]
     created_reviews = await _persist_reviews(pid, sid, result.get("review_items", []), now)
-
-    # Meeting mode -> structured meeting summary stored on the session.
-    meeting_summary = await ai.summarize_meeting(body.transcript, meta) if s.get("mode") == "meeting" else None
-
-    # Record estimated AI cost (capture splitting + optional meeting summary).
-    out_chars = sum(len(str(e.get("summary", ""))) for e in created_events) + len(str(meeting_summary or ""))
-    await usage.record(pid, "capture_process", in_chars=len(body.transcript), out_chars=out_chars, tier="cheap")
 
     await _finalize_session(s, sid, body.transcript, now, meeting_summary)
     locked_count = sum(1 for e in created_events if e.get("privacy_level") == "sensitive")

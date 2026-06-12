@@ -17,6 +17,14 @@ from db import db
 # Per-patient daily ceiling. 0.50 leaves headroom over the ~0.35 target/user so a
 # normal heavy day is never blocked, while a runaway loop still can't drain the pool.
 DAILY_AI_COST_CAP_USD = float(os.environ.get("DAILY_AI_COST_CAP_USD", "0.50"))
+MAX_AI_ACTIONS_PER_DAY = int(os.environ.get("MAX_AI_ACTIONS_PER_DAY", "50"))
+DAILY_VOICE_MINUTES_CAP = float(os.environ.get("DAILY_VOICE_MINUTES_CAP", "5"))
+MAX_RECORDING_SECONDS = int(os.environ.get("MAX_RECORDING_SECONDS", "600"))
+MAX_MEETING_MINUTES = int(os.environ.get("MAX_MEETING_MINUTES", "60"))
+
+VOICE_LIMIT_MESSAGE = (
+    "You've reached today's voice limit. You can still type your memory."
+)
 
 # Rough USD per 1M tokens (input, output). "cheap" = capture/summary tier.
 _PRICES = {
@@ -37,20 +45,61 @@ async def _today() -> str:
     return date.today().isoformat()
 
 
+async def _usage_doc(pid: str) -> dict:
+    return await db.ai_usage.find_one({"patient_id": pid, "day": await _today()}, {"_id": 0}) or {}
+
+
 async def spent_today(pid: str) -> float:
-    doc = await db.ai_usage.find_one({"patient_id": pid, "day": await _today()}, {"_id": 0})
-    return float(doc.get("est_cost", 0.0)) if doc else 0.0
+    return float((await _usage_doc(pid)).get("est_cost", 0.0))
+
+
+async def voice_minutes_today(pid: str) -> float:
+    return float((await _usage_doc(pid)).get("voice_minutes", 0.0))
+
+
+async def actions_today(pid: str) -> int:
+    return int((await _usage_doc(pid)).get("ops", 0))
 
 
 async def assert_within_cap(pid: str) -> None:
     """Raise 429 if the patient has already hit today's AI cost ceiling."""
     if DAILY_AI_COST_CAP_USD <= 0:
-        return  # cap disabled
+        return
     if await spent_today(pid) >= DAILY_AI_COST_CAP_USD:
         raise HTTPException(
             status_code=429,
             detail="Daily AI limit reached for today. This protects your usage budget — "
             "the rest of the app still works. Please try again tomorrow.",
+        )
+
+
+async def assert_action_cap(pid: str) -> None:
+    if MAX_AI_ACTIONS_PER_DAY <= 0:
+        return
+    if await actions_today(pid) >= MAX_AI_ACTIONS_PER_DAY:
+        raise HTTPException(
+            status_code=429,
+            detail="Daily AI action limit reached. You can still use non-AI features or type manually.",
+        )
+
+
+async def assert_voice_cap(pid: str, minutes: float) -> None:
+    if DAILY_VOICE_MINUTES_CAP <= 0:
+        return
+    if minutes > MAX_RECORDING_SECONDS / 60:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Recording is too long (max {MAX_RECORDING_SECONDS // 60} minutes per upload).",
+        )
+    if await voice_minutes_today(pid) + minutes > DAILY_VOICE_MINUTES_CAP:
+        raise HTTPException(status_code=429, detail=VOICE_LIMIT_MESSAGE)
+
+
+async def assert_meeting_length(minutes: float) -> None:
+    if MAX_MEETING_MINUTES > 0 and minutes > MAX_MEETING_MINUTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Meeting capture is limited to {MAX_MEETING_MINUTES} minutes.",
         )
 
 
@@ -62,7 +111,19 @@ async def record(pid: str, kind: str, in_chars: int = 0, out_chars: int = 0, tie
         {"patient_id": pid, "day": day},
         {
             "$inc": {"est_cost": cost, "ops": 1},
-            "$setOnInsert": {"patient_id": pid, "day": day},
+            "$setOnInsert": {"patient_id": pid, "day": day, "voice_minutes": 0.0},
+        },
+        upsert=True,
+    )
+
+
+async def record_voice_minutes(pid: str, minutes: float) -> None:
+    day = await _today()
+    await db.ai_usage.update_one(
+        {"patient_id": pid, "day": day},
+        {
+            "$inc": {"voice_minutes": max(0.0, minutes)},
+            "$setOnInsert": {"patient_id": pid, "day": day, "est_cost": 0.0, "ops": 0},
         },
         upsert=True,
     )
@@ -70,13 +131,21 @@ async def record(pid: str, kind: str, in_chars: int = 0, out_chars: int = 0, tie
 
 async def usage_summary(pid: str) -> dict:
     """Today's usage for surfacing in the UI / admin."""
-    doc = await db.ai_usage.find_one({"patient_id": pid, "day": await _today()}, {"_id": 0})
-    spent = float(doc.get("est_cost", 0.0)) if doc else 0.0
+    doc = await _usage_doc(pid)
+    spent = float(doc.get("est_cost", 0.0))
+    voice = float(doc.get("voice_minutes", 0.0))
+    ops = int(doc.get("ops", 0))
     return {
         "day": await _today(),
         "est_cost": round(spent, 4),
-        "ops": int(doc.get("ops", 0)) if doc else 0,
+        "ops": ops,
         "cap": DAILY_AI_COST_CAP_USD,
         "remaining": round(max(0.0, DAILY_AI_COST_CAP_USD - spent), 4),
         "capped": spent >= DAILY_AI_COST_CAP_USD if DAILY_AI_COST_CAP_USD > 0 else False,
+        "voice_minutes": round(voice, 2),
+        "voice_cap_minutes": DAILY_VOICE_MINUTES_CAP,
+        "voice_remaining_minutes": round(max(0.0, DAILY_VOICE_MINUTES_CAP - voice), 2),
+        "actions_cap": MAX_AI_ACTIONS_PER_DAY,
+        "max_recording_seconds": MAX_RECORDING_SECONDS,
+        "max_meeting_minutes": MAX_MEETING_MINUTES,
     }
