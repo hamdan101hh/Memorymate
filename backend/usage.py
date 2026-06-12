@@ -187,3 +187,9 @@ async def usage_summary(pid: str) -> dict:
         "max_smart_day_snippet_seconds": MAX_SMART_DAY_SNIPPET_SECONDS,
         "max_smart_day_session_hours": MAX_SMART_DAY_SESSION_HOURS,
     }
+
+
+async def reset_daily_usage(pid: str) -> None:
+    """Clear today's AI usage for one patient (test isolation)."""
+    day = await _today()
+    await db.ai_usage.delete_one({"patient_id": pid, "day": day})
