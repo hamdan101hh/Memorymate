@@ -107,3 +107,6 @@ MEMORYMATE_SECRETS_ZIP_PASSWORD_PRIVATE.txt
 memorymate-secrets-private.enc
 memorymate-secrets-private-encrypted.zip
 memorymate-code-transfer.zip
+
+# Generated cost report PDF (source: docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md + scripts/generate_cost_report_pdf.py)
+MemoryMate_Costs_And_Paid_Services_Report.pdf
