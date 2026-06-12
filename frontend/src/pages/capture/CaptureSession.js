@@ -8,7 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
 import api, { formatApiError } from "../../lib/api";
-import MemoryImageAttachments from "../../components/MemoryImageAttachments";
+import PhotoAttachmentPicker from "../../components/PhotoAttachmentPicker";
 import {
   Pause, Play, Square, Plus, Loader2, Sparkles, Bell, Users, MapPin,
   Pill, CalendarClock, Lock, ShieldQuestion, CheckCircle2, ArrowLeft, ListChecks,
@@ -261,11 +261,13 @@ function SessionSummary({ result, isMeeting, base, navigate, session }) {
 
       {isMeeting && (
         <div className="mb-6">
-          <MemoryImageAttachments
+          <PhotoAttachmentPicker
             captureSessionId={session.id}
+            linkedType="meeting"
+            linkedId={session.id}
             onImagesChange={setAttachedImages}
-            sectionTitle="Meeting photos"
-            sectionSubtitle="Add a photo of a board, notes, slide, place, or document to help MemoryMate create a better summary."
+            sectionTitle="Add photo"
+            sectionSubtitle="Attach an image for context — board, notes, slide, or document."
           />
           {attachedImages.length > 0 && (
             <label className="mt-3 flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
@@ -333,11 +335,13 @@ export default function CaptureSession() {
           <ActiveCaptureBanner session={session} status={status} onStatus={changeStatus} onFocusNote={() => noteRef.current?.focus()} />
           <CaptureInputs isMeeting={isMeeting} processing={processing} onAddNote={addNote} onProcess={process} onAppend={append} noteRef={noteRef} />
           {isMeeting && (
-            <MemoryImageAttachments
-              captureSessionId={session.id}
-              sectionTitle="Meeting photos"
-              sectionSubtitle="Add a photo of a board, notes, slide, place, or document to help MemoryMate create a better summary."
-            />
+          <PhotoAttachmentPicker
+            captureSessionId={session.id}
+            linkedType="conversation"
+            linkedId={session.id}
+            sectionTitle="Add photo"
+            sectionSubtitle="Attach an image for context — notes, slides, documents, or places."
+          />
           )}
         </>
       )}

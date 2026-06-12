@@ -18,6 +18,8 @@ import {
 import { toast } from "sonner";
 import CreateAppointmentWithAI from "./CreateAppointmentWithAI";
 import MeetingLocationNote from "../../components/caregiver/MeetingLocationNote";
+import PhotoAttachmentPicker from "../../components/PhotoAttachmentPicker";
+import AttachmentThumb from "../../components/AttachmentThumb";
 
 const empty = {
   title: "", doctor_or_clinic: "", date: "", time: "", location: "",
@@ -77,6 +79,7 @@ function ApptCard({ item, onComplete, onArchive, onEdit, onAddGoogle, onKeepDupl
       className={`border border-stone-200 border-l-4 rounded-lg p-3 flex gap-3 ${border}`}
       data-testid="appt-card"
     >
+      <AttachmentThumb item={item} />
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-medium text-sm truncate">{item.title}</h3>
@@ -158,6 +161,10 @@ export default function Appointments() {
   );
   const [dupModal, setDupModal] = useState(null);
   const [pendingForm, setPendingForm] = useState(null);
+  const [newImages, setNewImages] = useState([]);
+  const [newPhotoPermission, setNewPhotoPermission] = useState(false);
+  const [editImages, setEditImages] = useState([]);
+  const [editPhotoPermission, setEditPhotoPermission] = useState(false);
 
   const load = useCallback(() => {
     const archived = filter === "archived" ? "?include_archived=true" : "";
@@ -171,17 +178,29 @@ export default function Appointments() {
   const add = async (ignoreDuplicate = false, updateId = null) => {
     const payload = pendingForm || form;
     if (!payload.title.trim()) { toast.error("Title is required"); return; }
+    const imageIds = newImages.map((i) => i.id);
+    if (imageIds.length && !newPhotoPermission) {
+      toast.error("Please confirm you have permission to save attached photos.");
+      return;
+    }
     setSaving(true);
     try {
       if (updateId) {
         await api.patch(`/appointments/${updateId}`, payload);
         toast.success("Appointment updated");
       } else {
-        await api.post("/appointments", { ...payload, ignore_duplicate_warning: ignoreDuplicate });
+        await api.post("/appointments", {
+          ...payload,
+          ignore_duplicate_warning: ignoreDuplicate,
+          image_ids: imageIds,
+          permission_confirmed: imageIds.length ? newPhotoPermission : false,
+        });
         toast.success("Appointment added");
       }
       setOpen(false);
       setForm(empty);
+      setNewImages([]);
+      setNewPhotoPermission(false);
       setDupModal(null);
       setPendingForm(null);
       load();
@@ -249,6 +268,11 @@ export default function Appointments() {
 
   const saveEdit = async () => {
     if (!editItem) return;
+    const imageIds = editImages.map((i) => i.id);
+    if (imageIds.length && !editPhotoPermission) {
+      toast.error("Please confirm you have permission to save attached photos.");
+      return;
+    }
     setBusy(editItem.id);
     try {
       await api.patch(`/appointments/${editItem.id}`, {
@@ -258,9 +282,13 @@ export default function Appointments() {
         time: editItem.time,
         location: editItem.location,
         notes: editItem.notes,
+        image_ids: imageIds.length ? imageIds : undefined,
+        permission_confirmed: imageIds.length ? editPhotoPermission : false,
       });
       toast.success("Updated");
       setEditItem(null);
+      setEditImages([]);
+      setEditPhotoPermission(false);
       load();
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Could not save");
@@ -344,9 +372,22 @@ export default function Appointments() {
                 </div>
                 <div><Label>Location</Label><Input value={form.location} onChange={set("location")} className="mt-1 rounded-xl" /></div>
                 <div><Label>Notes</Label><Textarea value={form.notes} onChange={set("notes")} className="mt-1 rounded-xl" /></div>
+                <PhotoAttachmentPicker
+                  linkedType="appointment"
+                  onImagesChange={setNewImages}
+                  sectionTitle="Appointment photo"
+                  sectionSubtitle="Clinic form, parking spot, office sign, or document photo."
+                  showUseInSummary={false}
+                />
+                {newImages.length > 0 && (
+                  <label className="flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+                    <input type="checkbox" checked={newPhotoPermission} onChange={(e) => setNewPhotoPermission(e.target.checked)} data-testid="appt-new-photo-permission" />
+                    Save photo with appointment
+                  </label>
+                )}
               </div>
               <DialogFooter>
-                <Button onClick={add} disabled={saving} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="appt-save-btn">
+                <Button onClick={() => add()} disabled={saving} className="rounded-xl bg-sky-600 hover:bg-sky-700" data-testid="appt-save-btn">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
                 </Button>
               </DialogFooter>
@@ -512,10 +553,25 @@ export default function Appointments() {
               </div>
               <Input value={editItem.location || ""} onChange={(e) => setEditItem({ ...editItem, location: e.target.value })} placeholder="Location" />
               <Textarea value={editItem.notes || ""} onChange={(e) => setEditItem({ ...editItem, notes: e.target.value })} placeholder="Notes" />
+              <PhotoAttachmentPicker
+                linkedType="appointment"
+                linkedId={editItem.id}
+                onImagesChange={setEditImages}
+                sectionTitle="Appointment photo"
+                sectionSubtitle="Document photo or clinic context."
+                showUseInSummary={false}
+              />
+              {editImages.length > 0 && (
+                <label className="flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+                  <input type="checkbox" checked={editPhotoPermission} onChange={(e) => setEditPhotoPermission(e.target.checked)} data-testid="appt-edit-photo-permission" />
+                  Save photo with appointment
+                </label>
+              )}
+              {editItem.image_url && <AttachmentThumb item={editItem} />}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setEditItem(null); setEditImages([]); setEditPhotoPermission(false); }}>Cancel</Button>
             <Button className="bg-sky-600 hover:bg-sky-700" onClick={saveEdit} disabled={busy === editItem?.id}>Save</Button>
           </DialogFooter>
         </DialogContent>

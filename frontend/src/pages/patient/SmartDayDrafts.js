@@ -6,12 +6,15 @@ import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/common";
 import { Bell, CalendarClock, BookHeart, Trash2, Loader2, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
+import PhotoAttachmentPicker from "../../components/PhotoAttachmentPicker";
 
 export default function SmartDayDrafts() {
   const navigate = useNavigate();
   const [drafts, setDrafts] = useState([]);
   const [usage, setUsage] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [draftImages, setDraftImages] = useState({});
+  const [photoPermission, setPhotoPermission] = useState({});
 
   const load = useCallback(() => {
     api.get("/capture/smart-day/drafts").then(({ data }) => setDrafts(data.drafts || []));
@@ -21,9 +24,19 @@ export default function SmartDayDrafts() {
   useEffect(() => { load(); }, [load]);
 
   const save = async (id, saveAs) => {
+    const images = draftImages[id] || [];
+    const imageIds = images.map((i) => i.id);
+    if (imageIds.length && !photoPermission[id]) {
+      toast.error("Please confirm you have permission to save attached photos.");
+      return;
+    }
     setBusy(id);
     try {
-      await api.post(`/capture/smart-day/drafts/${id}/save`, { save_as: saveAs });
+      await api.post(`/capture/smart-day/drafts/${id}/save`, {
+        save_as: saveAs,
+        image_ids: imageIds,
+        permission_confirmed: imageIds.length ? true : false,
+      });
       toast.success(`Saved as ${saveAs}`);
       load();
     } catch (err) {
@@ -87,6 +100,27 @@ export default function SmartDayDrafts() {
               <p className="text-sm text-stone-500 mt-1">{d.suggested_type} · {d.confidence} confidence</p>
               <p className="mt-2 text-stone-700">{d.suggested_summary || d.transcript}</p>
               <p className="text-xs text-stone-400 mt-2">Detected {new Date(d.detected_at || d.created_at).toLocaleString()}</p>
+              <div className="mt-4">
+                <PhotoAttachmentPicker
+                  linkedType="smart_day_draft"
+                  linkedId={d.id}
+                  compact
+                  onImagesChange={(imgs) => setDraftImages((prev) => ({ ...prev, [d.id]: imgs }))}
+                  sectionTitle="Add photo"
+                  sectionSubtitle="Photo added for context before saving."
+                />
+                {(draftImages[d.id]?.length > 0) && (
+                  <label className="mt-2 flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={photoPermission[d.id] || false}
+                      onChange={(e) => setPhotoPermission((prev) => ({ ...prev, [d.id]: e.target.checked }))}
+                      data-testid={`smart-day-photo-perm-${d.id}`}
+                    />
+                    Save photo with this draft
+                  </label>
+                )}
+              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy === d.id} onClick={() => save(d.id, "memory")} className="rounded-xl bg-emerald-600" data-testid="save-draft-memory">
                   <BookHeart className="w-4 h-4 mr-1" /> Save as memory

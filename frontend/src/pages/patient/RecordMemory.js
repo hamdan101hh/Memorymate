@@ -13,7 +13,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Mic, Square, Loader2, Sparkles, CheckCircle2, Bell, Users, Pill, MapPin, Type, X } from "lucide-react";
 import { toast } from "sonner";
-import MemoryImageAttachments from "../../components/MemoryImageAttachments";
+import PhotoAttachmentPicker from "../../components/PhotoAttachmentPicker";
 
 export default function RecordMemory() {
   const navigate = useNavigate();
@@ -34,6 +34,7 @@ export default function RecordMemory() {
   const [speechUnsupported, setSpeechUnsupported] = useState(false);
   const [attachedImages, setAttachedImages] = useState([]);
   const [savePermission, setSavePermission] = useState(false);
+  const [safetyLine, setSafetyLine] = useState(null);
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
   const speechRef = useRef(null);
@@ -149,6 +150,7 @@ export default function RecordMemory() {
       const imageIds = attachedImages.map((i) => i.id);
       const { data } = await api.post("/memories/draft", { transcript: transcript.trim(), image_ids: imageIds });
       setDraft(data.draft);
+      setSafetyLine(data.safety_line || null);
       setPhase("review");
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Could not enhance. Try saving without AI.");
@@ -218,6 +220,7 @@ export default function RecordMemory() {
     setAttachLocation(false);
     setAttachedImages([]);
     setSavePermission(false);
+    setSafetyLine(null);
   };
 
   if (phase === "saved" && result) {
@@ -265,6 +268,9 @@ export default function RecordMemory() {
           )}
           {locationPreview && (
             <p className="text-sm flex items-center gap-1 text-sky-700"><MapPin className="w-4 h-4" /> {locationPreview.label}</p>
+          )}
+          {safetyLine && (
+            <p className="mt-3 text-sm text-amber-800 font-medium" data-testid="memory-safety-line">{safetyLine}</p>
           )}
         </div>
         {attachedImages.length > 0 && (
@@ -344,10 +350,10 @@ export default function RecordMemory() {
       </div>
 
       <div className="mt-5">
-        <MemoryImageAttachments
+        <PhotoAttachmentPicker
           onImagesChange={setAttachedImages}
-          sectionTitle="Memory photos"
-          sectionSubtitle="Add a photo of notes, a place, or a document to help MemoryMate create a better summary."
+          sectionTitle="Add photo"
+          sectionSubtitle="Attach an image for context — clinic form, document, place, or family moment."
         />
       </div>
 

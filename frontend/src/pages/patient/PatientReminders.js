@@ -7,6 +7,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Bell, Check, Clock, Plus, AlertCircle, Pill, CalendarClock, Users, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import PhotoAttachmentPicker from "../../components/PhotoAttachmentPicker";
+import AttachmentThumb from "../../components/AttachmentThumb";
 
 const CAT_ICON = { medication: Pill, appointment: CalendarClock, family: Users };
 const PRIORITY = { high: "border-red-300 bg-red-50", medium: "border-amber-200 bg-amber-50", low: "border-stone-200 bg-white" };
@@ -17,6 +19,8 @@ export default function PatientReminders() {
   const [rawTitle, setRawTitle] = useState("");
   const [enhancing, setEnhancing] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
+  const [attachedImages, setAttachedImages] = useState([]);
+  const [photoPermission, setPhotoPermission] = useState(false);
 
   const load = useCallback(() => api.get("/reminders").then(({ data }) => setReminders(data)), []);
   useEffect(() => { load(); }, [load]);
@@ -45,6 +49,11 @@ export default function PatientReminders() {
     const title = s?.suggested_title || rawTitle.trim();
     if (!title) return;
     try {
+      const imageIds = attachedImages.map((i) => i.id);
+      if (imageIds.length && !photoPermission) {
+        toast.error("Please confirm you have permission to save attached photos.");
+        return;
+      }
       await api.post("/reminders", {
         title,
         description: s?.enhanced_text || "",
@@ -53,9 +62,13 @@ export default function PatientReminders() {
         due_date: s?.due_date || "",
         due_time: s?.due_time || "",
         repeat_rule: s?.repeat_rule || "none",
+        image_ids: imageIds,
+        permission_confirmed: imageIds.length ? photoPermission : false,
       });
       setRawTitle("");
       setSuggestion(null);
+      setAttachedImages([]);
+      setPhotoPermission(false);
       setAdding(false);
       toast.success("Reminder added");
       load();
@@ -67,8 +80,21 @@ export default function PatientReminders() {
   const addRaw = async () => {
     if (!rawTitle.trim()) return;
     try {
-      await api.post("/reminders", { title: rawTitle.trim(), category: "custom", priority: "medium" });
+      const imageIds = attachedImages.map((i) => i.id);
+      if (imageIds.length && !photoPermission) {
+        toast.error("Please confirm you have permission to save attached photos.");
+        return;
+      }
+      await api.post("/reminders", {
+        title: rawTitle.trim(),
+        category: "custom",
+        priority: "medium",
+        image_ids: imageIds,
+        permission_confirmed: imageIds.length ? photoPermission : false,
+      });
       setRawTitle("");
+      setAttachedImages([]);
+      setPhotoPermission(false);
       setAdding(false);
       setSuggestion(null);
       toast.success("Reminder added");
@@ -118,6 +144,19 @@ export default function PatientReminders() {
           )}
           {!suggestion && (
             <Button onClick={addRaw} className="rounded-xl bg-sky-600" data-testid="new-reminder-save">Save as written</Button>
+          )}
+          <PhotoAttachmentPicker
+            linkedType="reminder"
+            onImagesChange={setAttachedImages}
+            sectionTitle="Add photo"
+            sectionSubtitle="Attach a document, medicine bottle, or item to remember."
+            showUseInSummary={false}
+          />
+          {attachedImages.length > 0 && (
+            <label className="flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+              <input type="checkbox" checked={photoPermission} onChange={(e) => setPhotoPermission(e.target.checked)} data-testid="reminder-photo-permission" />
+              Save photo with reminder
+            </label>
           )}
         </div>
       )}
@@ -174,6 +213,7 @@ function ReminderCard({ r, actions, muted }) {
   const Icon = CAT_ICON[r.category] || Bell;
   return (
     <div className={`rounded-2xl border-2 p-4 flex items-center gap-4 ${muted ? "border-stone-200 bg-stone-50 opacity-70" : PRIORITY[r.priority] || PRIORITY.low}`} data-testid="reminder-card">
+      <AttachmentThumb item={r} />
       <span className="grid place-items-center w-12 h-12 rounded-xl bg-white shadow-sm shrink-0">
         {r.status === "missed" ? <AlertCircle className="w-6 h-6 text-red-500" /> : <Icon className="w-6 h-6 text-stone-600" />}
       </span>

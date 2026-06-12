@@ -923,6 +923,8 @@ async def smart_day_list_drafts(user: dict = Depends(get_current_user)):
 class SmartDaySaveBody(BaseModel):
     save_as: str  # memory | reminder | appointment
     location_confirmed: bool = False
+    image_ids: List[str] = []
+    permission_confirmed: bool = False
 
 
 @router.post("/smart-day/drafts/{draft_id}/save")
@@ -931,30 +933,46 @@ async def smart_day_save_draft(draft_id: str, body: SmartDaySaveBody, user: dict
     draft = await db.smart_day_drafts.find_one({"id": draft_id, "patient_id": pid, "status": "draft"}, PROJ)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found or expired.")
+    if body.image_ids and not body.permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
     save_as = body.save_as
     if save_as not in ("memory", "reminder", "appointment"):
         raise HTTPException(status_code=400, detail="save_as must be memory, reminder, or appointment.")
     now = NOW()
     location = draft.get("location_context") if body.location_confirmed else None
+    img_ctx = await imgs.image_context_text(
+        db, pid, image_ids=body.image_ids or None,
+        linked_type="smart_day_draft", linked_id=draft_id,
+    )
+    transcript = draft["transcript"]
+    if img_ctx:
+        transcript = f"{transcript}\n\n{img_ctx}"
     result = {}
     if save_as == "memory":
         mem = await save_memory_for_patient(
-            pid, draft["transcript"], title=draft.get("suggested_title"),
+            pid, transcript, title=draft.get("suggested_title"),
             source="smart_day_capture", location=location,
+            image_ids=body.image_ids or None,
             by_user_id=user["id"], by_role=user["role"],
         )
         result["memory"] = mem
     elif save_as == "reminder":
+        desc = draft.get("suggested_summary", "")[:500]
+        if img_ctx and not desc:
+            desc = img_ctx[:500]
         doc = {
             "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
             "title": draft.get("suggested_title", "Reminder")[:200],
-            "description": draft.get("suggested_summary", "")[:500],
+            "description": desc,
             "category": "custom", "priority": "medium",
             "due_date": "", "due_time": "", "repeat_rule": "none",
             "status": "pending", "source": "smart_day_capture",
             "created_at": now, "completed_at": None,
         }
         await db.reminders.insert_one(doc)
+        if body.image_ids:
+            await imgs.link_images_to_reminder(db, pid, doc["id"], body.image_ids)
+            doc["image_url"] = imgs.public_image_path(body.image_ids[0])
         result["reminder"] = {k: v for k, v in doc.items() if k != "_id"}
     else:
         doc = {
@@ -962,10 +980,13 @@ async def smart_day_save_draft(draft_id: str, body: SmartDaySaveBody, user: dict
             "title": draft.get("suggested_title", "Appointment")[:200],
             "doctor_or_clinic": "", "date": "", "time": "",
             "location": (location or {}).get("label", "") if location else "",
-            "notes": draft.get("transcript", "")[:500],
+            "notes": transcript[:500],
             "status": "scheduled", "source": "smart_day_capture", "created_at": now,
         }
         await db.appointments.insert_one(doc)
+        if body.image_ids:
+            await imgs.link_images_to_appointment(db, pid, doc["id"], body.image_ids)
+            doc["image_url"] = imgs.public_image_path(body.image_ids[0])
         result["appointment"] = {k: v for k, v in doc.items() if k != "_id"}
 
     await db.smart_day_drafts.update_one(

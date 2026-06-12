@@ -314,15 +314,36 @@ async def filter_capture_transcript(transcript: str, meta: dict | None = None, s
 
 
 _FINANCE_RE = re.compile(
-    r"\b(crypto|bitcoin|ethereum|investment|trading|stock|portfolio|finance|financial)\b",
+    r"\b(crypto|bitcoin|ethereum|investment|trading|stock|portfolio|finance|financial|strategy)\b",
     re.I,
 )
-FINANCE_DISCLAIMER = "This is a summary of your meeting notes, not financial advice."
+_MEDICAL_RE = re.compile(
+    r"\b(hospital|clinic|doctor|dr\.?|medical|pharmacy|waiting room|appointment paper|diagnosis)\b",
+    re.I,
+)
+FINANCE_DISCLAIMER = "This is a summary of your notes, not financial advice."
+MEDICAL_DISCLAIMER = "MemoryMate organizes your note. It does not provide medical advice."
 
 
-def _needs_finance_disclaimer(text: str, meta: dict) -> bool:
+def _needs_finance_disclaimer(text: str, meta: dict | None = None) -> bool:
+    meta = meta or {}
     blob = f"{text} {meta.get('title', '')} {meta.get('purpose', '')}"
     return bool(_FINANCE_RE.search(blob))
+
+
+def _needs_medical_disclaimer(text: str, meta: dict | None = None) -> bool:
+    meta = meta or {}
+    blob = f"{text} {meta.get('title', '')} {meta.get('purpose', '')}"
+    return bool(_MEDICAL_RE.search(blob))
+
+
+def safety_line_for_text(text: str, meta: dict | None = None) -> str | None:
+    """Return neutral safety line for finance or clinic/hospital context."""
+    if _needs_finance_disclaimer(text, meta):
+        return FINANCE_DISCLAIMER
+    if _needs_medical_disclaimer(text, meta):
+        return MEDICAL_DISCLAIMER
+    return None
 
 
 async def summarize_meeting(transcript: str, meta: dict | None = None) -> dict:

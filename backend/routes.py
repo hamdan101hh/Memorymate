@@ -215,6 +215,7 @@ async def memory_draft(body: MemoryDraftBody, user: dict = Depends(get_current_u
     _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
     result = await ai_pipeline.extract_memory_fields(
         pid, transcript, style=_sdoc.get("note_style"))
+    safety = ai.safety_line_for_text(transcript)
     return {
         "draft": result["fields"],
         "transcript": body.transcript.strip(),
@@ -222,6 +223,7 @@ async def memory_draft(body: MemoryDraftBody, user: dict = Depends(get_current_u
         "clarification_question": result.get("clarification_question"),
         "providers_used": result.get("providers_used", 0),
         "premium_used": result.get("premium_used", False),
+        "safety_line": safety,
     }
 
 
@@ -274,6 +276,8 @@ class ReminderCreate(BaseModel):
     due_date: Optional[str] = ""
     due_time: Optional[str] = ""
     repeat_rule: str = "none"
+    image_ids: List[str] = []
+    permission_confirmed: bool = False
 
 
 class ReminderUpdate(BaseModel):
@@ -294,11 +298,26 @@ async def list_reminders(user: dict = Depends(get_current_user)):
 @router.post("/reminders")
 async def create_reminder(body: ReminderCreate, user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
+    if body.image_ids and not body.permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
     source = "caregiver" if user["role"] == "caregiver" else "patient"
-    doc = {"id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-           **body.model_dump(), "status": "pending", "source": source,
-           "created_at": NOW(), "completed_at": None}
+    payload = body.model_dump()
+    image_ids = payload.pop("image_ids", []) or []
+    permission_confirmed = payload.pop("permission_confirmed", False)
+    desc = payload.get("description") or ""
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=image_ids or None)
+    if img_ctx:
+        payload["description"] = f"{desc}\n\n{img_ctx}".strip() if desc else img_ctx
+    doc = {
+        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+        **payload, "status": "pending", "source": source,
+        "created_at": NOW(), "completed_at": None,
+    }
     await db.reminders.insert_one(doc)
+    if image_ids:
+        await imgs.link_images_to_reminder(db, pid, doc["id"], image_ids)
+        doc["image_url"] = imgs.public_image_path(image_ids[0])
+        doc["image_ids"] = image_ids[:imgs.MAX_IMAGES_PER_NOTE]
     await _log(user["id"], "create_reminder", "reminder", doc["id"])
     return {k: v for k, v in doc.items() if k != "_id"}
 
@@ -380,6 +399,8 @@ class AppointmentCreate(BaseModel):
     transport_notes: Optional[str] = ""
     reminder_time: Optional[str] = ""
     ignore_duplicate_warning: bool = False
+    image_ids: List[str] = []
+    permission_confirmed: bool = False
 
 
 @router.get("/appointments")
@@ -406,11 +427,23 @@ async def create_appointment(body: AppointmentCreate, user: dict = Depends(requi
                     "matches": _serialize_dup_matches(matches),
                 },
             )
+    if body.image_ids and not body.permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
     fields = body.model_dump()
     fields.pop("ignore_duplicate_warning", None)
+    image_ids = fields.pop("image_ids", []) or []
+    fields.pop("permission_confirmed", None)
+    notes = fields.get("notes") or ""
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=image_ids or None)
+    if img_ctx:
+        fields["notes"] = f"{notes}\n\n{img_ctx}".strip() if notes else img_ctx
     doc = {"id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
            **fields, "created_at": NOW()}
     await db.appointments.insert_one(doc)
+    if image_ids:
+        await imgs.link_images_to_appointment(db, pid, doc["id"], image_ids)
+        doc["image_url"] = imgs.public_image_path(image_ids[0])
+        doc["image_ids"] = image_ids[:imgs.MAX_IMAGES_PER_NOTE]
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
@@ -593,6 +626,8 @@ class AppointmentUpdate(BaseModel):
     status: Optional[str] = None
     calendar_archived: Optional[bool] = None
     dedup_exempt: Optional[bool] = None
+    image_ids: Optional[List[str]] = None
+    permission_confirmed: bool = False
 
 
 async def _appointment_not_dup_fps(pid: str) -> set[str]:
@@ -767,17 +802,25 @@ async def mark_appointment_not_duplicate(
 @router.patch("/appointments/{aid}")
 async def update_appointment(aid: str, body: AppointmentUpdate, user: dict = Depends(require_role("caregiver", "admin"))):
     pid = await patient_id_for(user)
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    if not updates:
+    raw = body.model_dump()
+    image_ids = raw.pop("image_ids", None)
+    permission_confirmed = raw.pop("permission_confirmed", False)
+    if image_ids and not permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
+    updates = {k: v for k, v in raw.items() if v is not None}
+    if not updates and not image_ids:
         raise HTTPException(status_code=400, detail="No fields to update.")
     if updates.get("status") == "completed":
         updates["completed_at"] = NOW()
-    result = await db.appointments.update_one(
-        {"id": aid, "patient_id": pid},
-        {"$set": updates},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Appointment not found.")
+    if updates:
+        result = await db.appointments.update_one(
+            {"id": aid, "patient_id": pid},
+            {"$set": updates},
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Appointment not found.")
+    if image_ids:
+        await imgs.link_images_to_appointment(db, pid, aid, image_ids)
     doc = await db.appointments.find_one({"id": aid, "patient_id": pid}, PROJ)
     return doc
 

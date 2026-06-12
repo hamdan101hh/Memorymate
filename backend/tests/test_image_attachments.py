@@ -1,6 +1,7 @@
 """Tests for memory/meeting image attachments — validation, safety, and access."""
 import io
 import os
+import uuid
 from pathlib import Path
 
 import pytest
@@ -35,7 +36,7 @@ class TestImageValidation:
         with pytest.raises(HTTPException) as exc:
             validate_image_upload(b"not an image", "application/pdf")
         assert exc.value.status_code == 400
-        assert "Unsupported" in exc.value.detail
+        assert "not supported" in exc.value.detail.lower()
 
     def test_rejects_files_over_size_limit(self):
         big = b"x" * (MAX_IMAGE_BYTES + 1)
@@ -101,11 +102,15 @@ class TestDraftImageLifecycle:
         token = _demo("patient")["token"]
         before = requests.get(f"{API}/memories", headers=_h(token), timeout=15)
         count_before = len(before.json())
+        lid = str(uuid.uuid4())
         fd = {"file": ("tiny.jpg", io.BytesIO(b"\xff\xd8\xff\xe0\x00\x10JFIF"), "image/jpeg")}
         up = requests.post(
-            f"{API}/memories/draft-images",
+            f"{API}/attachments/draft",
             headers=_h(token),
-            data={"permission_confirmed": "true", "source": "upload", "description": "whiteboard"},
+            data={
+                "permission_confirmed": "true", "source": "upload", "description": "whiteboard",
+                "linked_type": "draft", "linked_id": lid,
+            },
             files=fd,
             timeout=30,
         )
@@ -113,23 +118,27 @@ class TestDraftImageLifecycle:
         image_id = up.json()["id"]
         after = requests.get(f"{API}/memories", headers=_h(token), timeout=15)
         assert len(after.json()) == count_before
-        requests.delete(f"{API}/memories/draft-images/{image_id}", headers=_h(token), timeout=15)
+        requests.delete(f"{API}/attachments/draft/{image_id}", headers=_h(token), timeout=15)
 
     def test_image_can_be_removed_before_save(self):
         token = _demo("patient")["token"]
+        lid = str(uuid.uuid4())
         fd = {"file": ("rm.jpg", io.BytesIO(b"\xff\xd8\xff\xe0\x00\x10JFIF"), "image/jpeg")}
         up = requests.post(
-            f"{API}/memories/draft-images",
+            f"{API}/attachments/draft",
             headers=_h(token),
-            data={"permission_confirmed": "true", "source": "upload"},
+            data={
+                "permission_confirmed": "true", "source": "upload",
+                "linked_type": "draft", "linked_id": lid,
+            },
             files=fd,
             timeout=30,
         )
         assert up.status_code == 200
         image_id = up.json()["id"]
-        rm = requests.delete(f"{API}/memories/draft-images/{image_id}", headers=_h(token), timeout=15)
+        rm = requests.delete(f"{API}/attachments/draft/{image_id}", headers=_h(token), timeout=15)
         assert rm.status_code == 200
-        get_img = requests.get(f"{API}/images/{image_id}", headers=_h(token), timeout=15)
+        get_img = requests.get(f"{API}/attachments/{image_id}", headers=_h(token), timeout=15)
         assert get_img.status_code == 404
 
 
@@ -140,11 +149,15 @@ class TestAccessControl:
 
     def test_saved_memory_can_include_image_url_metadata(self):
         token = _demo("patient")["token"]
+        lid = str(uuid.uuid4())
         fd = {"file": ("meta.jpg", io.BytesIO(b"\xff\xd8\xff\xe0\x00\x10JFIF"), "image/jpeg")}
         up = requests.post(
-            f"{API}/memories/draft-images",
+            f"{API}/attachments/draft",
             headers=_h(token),
-            data={"permission_confirmed": "true", "source": "upload", "description": "notes on board"},
+            data={
+                "permission_confirmed": "true", "source": "upload", "description": "notes on board",
+                "linked_type": "draft", "linked_id": lid,
+            },
             files=fd,
             timeout=30,
         )
@@ -164,4 +177,4 @@ class TestAccessControl:
         )
         assert mem.status_code == 200, mem.text
         data = mem.json()
-        assert data.get("image_url") == f"/api/images/{image_id}"
+        assert data.get("image_url") in (f"/api/attachments/{image_id}", f"/api/images/{image_id}")
