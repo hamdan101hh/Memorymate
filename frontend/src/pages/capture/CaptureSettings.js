@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Disclaimer } from "../../components/common";
 import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Infinity as InfinityIcon, MapPin, Pencil, Bell, Mic } from "lucide-react";
+import { EyeOff, BatteryCharging, Timer, BatteryWarning, Wifi, Cpu, Save, Sparkles, ArrowLeft, Loader2, Infinity as InfinityIcon, MapPin, Pencil, Bell, Mic, Sun } from "lucide-react";
 import { CAPTURE_LANGUAGES } from "../../lib/captureLanguage";
 import { toast } from "sonner";
 
@@ -118,6 +118,34 @@ export default function CaptureSettings() {
         {s.last_location_preview?.label && (
           <p className="text-xs text-stone-500 pt-2" data-testid="last-location-preview">Last shared: {s.last_location_preview.label}</p>
         )}
+      </Card>
+
+      <Card title="Smart Day Capture">
+        <Row icon={Sun} label="Enable Smart Day Capture">
+          <Switch checked={!!s.smart_day_enabled} onCheckedChange={(v) => update({ smart_day_enabled: v })} data-testid="setting-smart-day-enabled" />
+        </Row>
+        <Row icon={Timer} label="Ignore snippets shorter than (seconds)">
+          <Select value={String(s.smart_day_min_snippet_seconds || 3)} onValueChange={(v) => update({ smart_day_min_snippet_seconds: Number(v) })}>
+            <SelectTrigger className="w-24 rounded-xl" data-testid="setting-smart-day-min-seconds"><SelectValue /></SelectTrigger>
+            <SelectContent>{[2, 3, 5, 8].map((n) => <SelectItem key={n} value={String(n)}>{n}s</SelectItem>)}</SelectContent>
+          </Select>
+        </Row>
+        <Row icon={Wifi} label="Cloud transcription fallback">
+          <Switch checked={!!s.smart_day_cloud_fallback} onCheckedChange={(v) => update({ smart_day_cloud_fallback: v })} data-testid="setting-smart-day-cloud" />
+        </Row>
+        <p className="text-xs text-stone-400 pt-2">Off by default. Browser speech is used first. Drafts expire after 24 hours unless saved.</p>
+        <p className="text-xs text-amber-700 pt-2">Only use Smart Day Capture where you have permission to record or transcribe conversations.</p>
+        <button
+          onClick={async () => {
+            if (!window.confirm("Delete all Smart Day capture drafts?")) return;
+            await api.post("/capture/smart-day/drafts/clear");
+            toast.success("Drafts cleared");
+          }}
+          className="mt-3 text-sm font-medium text-red-700"
+          data-testid="setting-clear-smart-day-drafts"
+        >
+          Delete all capture drafts
+        </button>
       </Card>
 
       <Card title="Capture language">

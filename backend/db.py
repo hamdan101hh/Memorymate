@@ -21,3 +21,4 @@ async def ensure_indexes():
     await db.notification_log.create_index([("patient_id", 1), ("kind", 1), ("day", 1)], unique=True)
     await db.calendar_links.create_index("patient_id", unique=True)
     await db.calendar_activity.create_index([("patient_id", 1), ("created_at", -1)])
+    await db.smart_day_drafts.create_index([("patient_id", 1), ("status", 1), ("expires_at", 1)])

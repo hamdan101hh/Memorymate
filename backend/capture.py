@@ -8,10 +8,11 @@ from pydantic import BaseModel
 
 from db import db
 from auth import get_current_user, _log, hash_password, verify_password
-from routes import patient_id_for
+from routes import patient_id_for, save_memory_for_patient
 import ai
 import ai_pipeline
 import usage
+import capture_meaningfulness as meaning
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
 NOW = lambda: datetime.now(timezone.utc).isoformat()
@@ -56,6 +57,14 @@ DEFAULT_SETTINGS = {
     "capture_started_at": None,
     "capture_expires_at": None,       # ISO timestamp or None (= until turned off)
     "onboarding_done": False,
+    # --- Smart Day Capture (browser speech drafts while page is open) ---
+    "smart_day_enabled": True,
+    "smart_day_active": False,
+    "smart_day_paused": False,
+    "smart_day_started_at": None,
+    "smart_day_min_snippet_seconds": 3,
+    "smart_day_cloud_fallback": False,
+    "smart_day_draft_hours": 24,
 }
 
 DURATION_DELTAS = {
@@ -94,6 +103,10 @@ class SettingsUpdate(BaseModel):
     default_transcript_storage_mode: Optional[str] = None
     note_style: Optional[str] = None
     reminder_tone: Optional[str] = None
+    smart_day_enabled: Optional[bool] = None
+    smart_day_min_snippet_seconds: Optional[int] = None
+    smart_day_cloud_fallback: Optional[bool] = None
+    smart_day_draft_hours: Optional[int] = None
 
 
 @router.patch("/settings")
@@ -735,3 +748,241 @@ async def review_action(rid: str, body: ReviewAction, user: dict = Depends(get_c
         {"id": rid}, {"$set": {"status": "resolved", "resolved_action": action, "resolved_at": now}})
     await _log(user["id"], "review_action", "privacy_review", rid, action)
     return {"ok": True, "action": action}
+
+
+# ---------------- Smart Day Capture (cost-safe browser speech drafts) ----------------
+SMART_DAY_DRAFT_HOURS_DEFAULT = 24
+
+
+def _draft_expires(hours: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=max(1, hours))).isoformat()
+
+
+def _active_draft_filter(pid: str) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "patient_id": pid,
+        "status": "draft",
+        "$or": [{"expires_at": {"$gt": now}}, {"expires_at": None}],
+    }
+
+
+@router.get("/smart-day/status")
+async def smart_day_status(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    settings = await get_settings_doc(pid)
+    usage_info = await usage.usage_summary(pid)
+    draft_count = await db.smart_day_drafts.count_documents(_active_draft_filter(pid))
+    started = settings.get("smart_day_started_at")
+    session_hours = 0.0
+    if started and settings.get("smart_day_active"):
+        try:
+            start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+            session_hours = (datetime.now(timezone.utc) - start_dt).total_seconds() / 3600
+        except ValueError:
+            session_hours = 0.0
+    return {
+        "enabled": settings.get("smart_day_enabled", True),
+        "active": settings.get("smart_day_active", False),
+        "paused": settings.get("smart_day_paused", False),
+        "started_at": started,
+        "session_hours": round(session_hours, 2),
+        "session_limit_hours": usage.MAX_SMART_DAY_SESSION_HOURS,
+        "draft_count": draft_count,
+        "cloud_minutes_used": usage_info.get("smart_day_cloud_minutes", 0),
+        "cloud_minutes_cap": usage_info.get("smart_day_cloud_cap_minutes", 15),
+        "voice_limit_reached": usage_info.get("smart_day_cloud_remaining_minutes", 15) <= 0,
+    }
+
+
+@router.post("/smart-day/start")
+async def smart_day_start(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    settings = await get_settings_doc(pid)
+    if settings.get("private_mode"):
+        raise HTTPException(status_code=423, detail="Private Mode is ON. Smart Day Capture is disabled.")
+    if not settings.get("mic_enabled"):
+        raise HTTPException(status_code=400, detail="Turn on microphone permission in Capture settings first.")
+    if not settings.get("smart_day_enabled", True):
+        raise HTTPException(status_code=400, detail="Smart Day Capture is disabled in settings.")
+    await db.audio_settings.update_one(
+        {"patient_id": pid},
+        {"$set": {"smart_day_active": True, "smart_day_paused": False, "smart_day_started_at": NOW()}},
+    )
+    await _log(user["id"], "smart_day_start", "capture", pid)
+    return await smart_day_status(user)
+
+
+class SmartDayPauseBody(BaseModel):
+    paused: bool = True
+
+
+@router.post("/smart-day/pause")
+async def smart_day_pause(body: SmartDayPauseBody, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    paused = body.paused
+    await db.audio_settings.update_one(
+        {"patient_id": pid},
+        {"$set": {"smart_day_paused": paused}},
+    )
+    return await smart_day_status(user)
+
+
+@router.post("/smart-day/stop")
+async def smart_day_stop(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    await db.audio_settings.update_one(
+        {"patient_id": pid},
+        {"$set": {"smart_day_active": False, "smart_day_paused": False, "smart_day_started_at": None}},
+    )
+    await _log(user["id"], "smart_day_stop", "capture", pid)
+    return await smart_day_status(user)
+
+
+class SmartDayDraftBody(BaseModel):
+    transcript: str
+    language: Optional[str] = "auto"
+    detected_at: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    location_context: Optional[dict] = None
+    location_confirmed: bool = False
+    source: str = "smart_day_capture"
+    browser_transcript: bool = True
+
+
+@router.post("/smart-day/draft")
+async def smart_day_create_draft(body: SmartDayDraftBody, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    settings = await get_settings_doc(pid)
+    if settings.get("private_mode"):
+        raise HTTPException(status_code=423, detail="Private Mode is ON.")
+    if not settings.get("smart_day_active"):
+        raise HTTPException(status_code=400, detail="Start Smart Day Capture first.")
+
+    duration = float(body.duration_seconds or 0)
+    if duration > usage.MAX_SMART_DAY_SNIPPET_SECONDS:
+        return {"created": False, "reason": "snippet_too_long"}
+
+    meta = {
+        "duration_seconds": duration,
+        "min_snippet_seconds": settings.get("smart_day_min_snippet_seconds", 3),
+    }
+    check = meaning.is_meaningful_capture_snippet(body.transcript, meta)
+    if not check.get("should_create_draft"):
+        return {"created": False, "reason": check.get("reason"), "filter": check}
+
+    # Browser transcript path — no cloud STT when browser_transcript is true.
+    if not body.browser_transcript and settings.get("smart_day_cloud_fallback"):
+        if not ai_pipeline.CLOUD_TRANSCRIPTION_ENABLED:
+            return {"created": False, "reason": "cloud_transcription_disabled"}
+        minutes = max(duration / 60.0, 0.1)
+        await usage.assert_smart_day_cloud_cap(pid, minutes)
+
+    hours = int(settings.get("smart_day_draft_hours") or SMART_DAY_DRAFT_HOURS_DEFAULT)
+    now = NOW()
+    draft_id = str(uuid.uuid4())
+    loc = body.location_context if body.location_confirmed and body.location_context else None
+    doc = {
+        "id": draft_id,
+        "patient_id": pid,
+        "user_id": user["id"],
+        "transcript": body.transcript.strip(),
+        "suggested_title": check.get("suggested_title", body.transcript[:60]),
+        "suggested_summary": check.get("suggested_summary", body.transcript[:280]),
+        "suggested_type": check.get("suggested_type", "memory"),
+        "confidence": check.get("confidence", "medium"),
+        "detected_at": body.detected_at or now,
+        "duration_seconds": duration,
+        "language": body.language or "auto",
+        "location_context": loc,
+        "source": body.source,
+        "status": "draft",
+        "expires_at": _draft_expires(hours),
+        "created_at": now,
+    }
+    await db.smart_day_drafts.insert_one(doc)
+    await _log(user["id"], "smart_day_draft", "smart_day_draft", draft_id)
+    return {"created": True, "reason": check.get("reason"), "draft": {k: v for k, v in doc.items() if k != "_id"}}
+
+
+@router.get("/smart-day/drafts")
+async def smart_day_list_drafts(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    drafts = await db.smart_day_drafts.find(_active_draft_filter(pid), PROJ).sort("created_at", -1).to_list(200)
+    return {"drafts": drafts}
+
+
+class SmartDaySaveBody(BaseModel):
+    save_as: str  # memory | reminder | appointment
+    location_confirmed: bool = False
+
+
+@router.post("/smart-day/drafts/{draft_id}/save")
+async def smart_day_save_draft(draft_id: str, body: SmartDaySaveBody, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    draft = await db.smart_day_drafts.find_one({"id": draft_id, "patient_id": pid, "status": "draft"}, PROJ)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found or expired.")
+    save_as = body.save_as
+    if save_as not in ("memory", "reminder", "appointment"):
+        raise HTTPException(status_code=400, detail="save_as must be memory, reminder, or appointment.")
+    now = NOW()
+    location = draft.get("location_context") if body.location_confirmed else None
+    result = {}
+    if save_as == "memory":
+        mem = await save_memory_for_patient(
+            pid, draft["transcript"], title=draft.get("suggested_title"),
+            source="smart_day_capture", location=location,
+            by_user_id=user["id"], by_role=user["role"],
+        )
+        result["memory"] = mem
+    elif save_as == "reminder":
+        doc = {
+            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+            "title": draft.get("suggested_title", "Reminder")[:200],
+            "description": draft.get("suggested_summary", "")[:500],
+            "category": "custom", "priority": "medium",
+            "due_date": "", "due_time": "", "repeat_rule": "none",
+            "status": "pending", "source": "smart_day_capture",
+            "created_at": now, "completed_at": None,
+        }
+        await db.reminders.insert_one(doc)
+        result["reminder"] = {k: v for k, v in doc.items() if k != "_id"}
+    else:
+        doc = {
+            "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+            "title": draft.get("suggested_title", "Appointment")[:200],
+            "doctor_or_clinic": "", "date": "", "time": "",
+            "location": (location or {}).get("label", "") if location else "",
+            "notes": draft.get("transcript", "")[:500],
+            "status": "scheduled", "source": "smart_day_capture", "created_at": now,
+        }
+        await db.appointments.insert_one(doc)
+        result["appointment"] = {k: v for k, v in doc.items() if k != "_id"}
+
+    await db.smart_day_drafts.update_one(
+        {"id": draft_id}, {"$set": {"status": "saved", "saved_at": now, "saved_as": save_as}},
+    )
+    return {"ok": True, "saved_as": save_as, **result}
+
+
+@router.post("/smart-day/drafts/{draft_id}/ignore")
+async def smart_day_ignore_draft(draft_id: str, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    res = await db.smart_day_drafts.update_one(
+        {"id": draft_id, "patient_id": pid, "status": "draft"},
+        {"$set": {"status": "ignored", "ignored_at": NOW()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Draft not found.")
+    return {"ok": True}
+
+
+@router.post("/smart-day/drafts/clear")
+async def smart_day_clear_drafts(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    res = await db.smart_day_drafts.update_many(
+        {"patient_id": pid, "status": "draft"},
+        {"$set": {"status": "deleted", "deleted_at": NOW()}},
+    )
+    return {"cleared": res.modified_count}

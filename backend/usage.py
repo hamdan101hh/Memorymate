@@ -21,6 +21,9 @@ MAX_AI_ACTIONS_PER_DAY = int(os.environ.get("MAX_AI_ACTIONS_PER_DAY", "50"))
 DAILY_VOICE_MINUTES_CAP = float(os.environ.get("DAILY_VOICE_MINUTES_CAP", "5"))
 MAX_RECORDING_SECONDS = int(os.environ.get("MAX_RECORDING_SECONDS", "600"))
 MAX_MEETING_MINUTES = int(os.environ.get("MAX_MEETING_MINUTES", "60"))
+SMART_DAY_CLOUD_MINUTES_CAP = float(os.environ.get("SMART_DAY_CLOUD_MINUTES_CAP", "15"))
+MAX_SMART_DAY_SNIPPET_SECONDS = int(os.environ.get("MAX_SMART_DAY_SNIPPET_SECONDS", "60"))
+MAX_SMART_DAY_SESSION_HOURS = float(os.environ.get("MAX_SMART_DAY_SESSION_HOURS", "2"))
 
 VOICE_LIMIT_MESSAGE = (
     "You've reached today's voice limit. You can still type your memory."
@@ -57,6 +60,10 @@ async def voice_minutes_today(pid: str) -> float:
     return float((await _usage_doc(pid)).get("voice_minutes", 0.0))
 
 
+async def smart_day_cloud_minutes_today(pid: str) -> float:
+    return float((await _usage_doc(pid)).get("smart_day_cloud_minutes", 0.0))
+
+
 async def actions_today(pid: str) -> int:
     return int((await _usage_doc(pid)).get("ops", 0))
 
@@ -81,6 +88,30 @@ async def assert_action_cap(pid: str) -> None:
             status_code=429,
             detail="Daily AI action limit reached. You can still use non-AI features or type manually.",
         )
+
+
+async def assert_smart_day_cloud_cap(pid: str, minutes: float) -> None:
+    if SMART_DAY_CLOUD_MINUTES_CAP <= 0:
+        return
+    if minutes > MAX_SMART_DAY_SNIPPET_SECONDS / 60:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Snippet too long (max {MAX_SMART_DAY_SNIPPET_SECONDS} seconds).",
+        )
+    if await smart_day_cloud_minutes_today(pid) + minutes > SMART_DAY_CLOUD_MINUTES_CAP:
+        raise HTTPException(status_code=429, detail=VOICE_LIMIT_MESSAGE)
+
+
+async def record_smart_day_cloud_minutes(pid: str, minutes: float) -> None:
+    day = await _today()
+    await db.ai_usage.update_one(
+        {"patient_id": pid, "day": day},
+        {
+            "$inc": {"smart_day_cloud_minutes": max(0.0, minutes), "voice_minutes": max(0.0, minutes)},
+            "$setOnInsert": {"patient_id": pid, "day": day, "est_cost": 0.0, "ops": 0},
+        },
+        upsert=True,
+    )
 
 
 async def assert_voice_cap(pid: str, minutes: float) -> None:
@@ -148,4 +179,11 @@ async def usage_summary(pid: str) -> dict:
         "actions_cap": MAX_AI_ACTIONS_PER_DAY,
         "max_recording_seconds": MAX_RECORDING_SECONDS,
         "max_meeting_minutes": MAX_MEETING_MINUTES,
+        "smart_day_cloud_minutes": round(float(doc.get("smart_day_cloud_minutes", 0.0)), 2),
+        "smart_day_cloud_cap_minutes": SMART_DAY_CLOUD_MINUTES_CAP,
+        "smart_day_cloud_remaining_minutes": round(
+            max(0.0, SMART_DAY_CLOUD_MINUTES_CAP - float(doc.get("smart_day_cloud_minutes", 0.0))), 2,
+        ),
+        "max_smart_day_snippet_seconds": MAX_SMART_DAY_SNIPPET_SECONDS,
+        "max_smart_day_session_hours": MAX_SMART_DAY_SESSION_HOURS,
     }

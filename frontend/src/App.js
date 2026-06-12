@@ -62,6 +62,7 @@ const CaptureSessions = lazy(() => import("./pages/capture/CaptureSessions"));
 const PrivacyReview = lazy(() => import("./pages/capture/PrivacyReview"));
 const PrivacyVault = lazy(() => import("./pages/capture/PrivacyVault"));
 const CaptureSettings = lazy(() => import("./pages/capture/CaptureSettings"));
+const SmartDayDrafts = lazy(() => import("./pages/patient/SmartDayDrafts"));
 
 function homePath(role) {
   if (role === "patient") return "/patient";
@@ -120,6 +121,7 @@ function AppRoutes() {
         <Route path="capture/review" element={<PrivacyReview />} />
         <Route path="capture/vault" element={<PrivacyVault />} />
         <Route path="capture/settings" element={<CaptureSettings />} />
+        <Route path="capture/smart-day-drafts" element={<SmartDayDrafts />} />
         <Route path="share" element={<ShareExport />} />
         <Route path="memory-book" element={<PatientMemoryBook />} />
       </Route>
