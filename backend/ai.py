@@ -123,7 +123,7 @@ def _extract_json(text: str) -> dict:
         return json.loads(cleaned)
 
 
-async def process_transcript(transcript: str, style: str | None = None) -> dict:
+async def process_transcript(transcript: str, style: str | None = None, premium: bool = False) -> dict:
     """Turn a raw memory transcript into a structured summary + extractions."""
     fallback = {
         "title": "Memory note",
@@ -151,7 +151,7 @@ async def process_transcript(transcript: str, style: str | None = None) -> dict:
         + _note_style_hint(style)
     )
     try:
-        chat = _chat(system, cheap=True)
+        chat = _chat(system, cheap=not premium)
         resp = await chat.send_message(UserMessage(text=f"Transcript:\n{transcript}"))
         data = _extract_json(resp)
         for key in fallback:
@@ -313,15 +313,58 @@ async def filter_capture_transcript(transcript: str, meta: dict | None = None, s
         return fallback
 
 
+_FINANCE_RE = re.compile(
+    r"\b(crypto|bitcoin|ethereum|investment|trading|stock|portfolio|finance|financial|strategy)\b",
+    re.I,
+)
+_MEDICAL_RE = re.compile(
+    r"\b(hospital|clinic|doctor|dr\.?|medical|pharmacy|waiting room|appointment paper|diagnosis)\b",
+    re.I,
+)
+FINANCE_DISCLAIMER = "This is a summary of your notes, not financial advice."
+MEDICAL_DISCLAIMER = "MemoryMate organizes your note. It does not provide medical advice."
+
+
+def _needs_finance_disclaimer(text: str, meta: dict | None = None) -> bool:
+    meta = meta or {}
+    blob = f"{text} {meta.get('title', '')} {meta.get('purpose', '')}"
+    return bool(_FINANCE_RE.search(blob))
+
+
+def _needs_medical_disclaimer(text: str, meta: dict | None = None) -> bool:
+    meta = meta or {}
+    blob = f"{text} {meta.get('title', '')} {meta.get('purpose', '')}"
+    return bool(_MEDICAL_RE.search(blob))
+
+
+def safety_line_for_text(text: str, meta: dict | None = None) -> str | None:
+    """Return neutral safety line for finance or clinic/hospital context."""
+    if _needs_finance_disclaimer(text, meta):
+        return FINANCE_DISCLAIMER
+    if _needs_medical_disclaimer(text, meta):
+        return MEDICAL_DISCLAIMER
+    return None
+
+
 async def summarize_meeting(transcript: str, meta: dict | None = None) -> dict:
     """Produce a structured meeting summary."""
     meta = meta or {}
     fallback = {
         "summary": transcript[:240], "key_points": [], "decisions": [], "action_items": [],
         "follow_ups": [], "people": [], "dates": [], "reminders": [], "next_steps": [],
+        "disclaimer": None,
     }
+    finance_rules = (
+        "\nIf the meeting discusses crypto, investments, trading, or finance:\n"
+        "- Summarize what was discussed only. Do not give financial advice.\n"
+        "- Do not say strategies are safe or profitable.\n"
+        "- Do not recommend buying or selling anything.\n"
+        "- Do not make predictions about markets.\n"
+    )
+    image_ctx = meta.get("image_context", "")
     system = (
         SAFETY_RULES
+        + finance_rules
         + "\nYou are summarizing a meeting that was captured with consent. "
         "Be factual and concise. Respond ONLY with valid JSON in exactly this shape:\n"
         "{\n"
@@ -330,18 +373,31 @@ async def summarize_meeting(transcript: str, meta: dict | None = None) -> dict:
         '  "follow_ups": ["..."], "people": ["..."], "dates": ["..."],\n'
         '  "reminders": ["..."], "next_steps": ["..."]\n'
         "}\nUse empty arrays where nothing applies. Do not invent anything.\n\n"
-        f"Meeting title: {meta.get('title','')}. Purpose: {meta.get('purpose','')}. People: {meta.get('people_involved','')}."
+        f"Meeting title: {meta.get('title','')}. Purpose: {meta.get('purpose','')}. "
+        f"People: {meta.get('people_involved','')}."
     )
+    if image_ctx:
+        system += f"\n\nPhoto context from the user:\n{image_ctx}"
+    user_text = f"Meeting transcript:\n{transcript}"
+    if image_ctx:
+        user_text += f"\n\nAttached images ({meta.get('image_count', 0)}): see photo descriptions above."
     try:
         chat = _chat(system, cheap=True)
-        resp = await chat.send_message(UserMessage(text=f"Meeting transcript:\n{transcript}"))
+        resp = await chat.send_message(UserMessage(text=user_text))
         data = _extract_json(resp)
         for k in fallback:
             data.setdefault(k, fallback[k])
+        if _needs_finance_disclaimer(transcript, meta):
+            data["disclaimer"] = FINANCE_DISCLAIMER
+            if FINANCE_DISCLAIMER not in data.get("summary", ""):
+                data["summary"] = (data.get("summary", "").strip() + " " + FINANCE_DISCLAIMER).strip()
         return data
     except Exception as e:
         print(f"[ai.summarize_meeting] failed: {e}")
-        return fallback
+        out = dict(fallback)
+        if _needs_finance_disclaimer(transcript, meta):
+            out["disclaimer"] = FINANCE_DISCLAIMER
+        return out
 
 
 # ---- calendar event drafting (approval-gated — draft only, never auto-add) ----

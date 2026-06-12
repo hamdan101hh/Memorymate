@@ -4,16 +4,18 @@ import uuid
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional, List
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, EmailStr
 
 from db import db
 from auth import get_current_user, require_role, _log
 import ai
+import ai_pipeline
 import usage
 import appointment_dashboard as apdash
 import appointment_ai
 import duplicate_helpers as duph
+import image_storage as imgs
 
 router = APIRouter(prefix="/api", tags=["app"])
 
@@ -108,10 +110,13 @@ class MemoryCreate(BaseModel):
     location: Optional[dict] = None  # optional {lat, lng, label} when location is enabled
     skip_ai: bool = False  # save exactly as written without AI enhancement
     use_draft: Optional[dict] = None  # pre-reviewed draft from POST /memories/draft
+    image_ids: List[str] = []
+    permission_confirmed: bool = False
 
 
 class MemoryDraftBody(BaseModel):
     transcript: str
+    image_ids: List[str] = []
 
 
 def _bucket_now() -> str:
@@ -122,6 +127,7 @@ def _bucket_now() -> str:
 async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[str] = None,
                                   source: str = "manual", location: Optional[dict] = None,
                                   skip_ai: bool = False, use_draft: Optional[dict] = None,
+                                  image_ids: Optional[List[str]] = None,
                                   by_user_id: str = "system", by_role: str = "patient") -> dict:
     """Shared memory pipeline: AI extraction + persistence + auto-reminders.
 
@@ -163,6 +169,10 @@ async def save_memory_for_patient(pid: str, transcript: str, *, title: Optional[
         "created_at": now,
     }
     await db.memories.insert_one(memory)
+    if image_ids:
+        await imgs.link_images_to_memory(db, pid, mem_id, image_ids)
+        memory["image_url"] = imgs.public_image_path(image_ids[0])
+        memory["image_ids"] = image_ids[:imgs.MAX_IMAGES_PER_NOTE]
     for r in extracted.get("reminders", []):
         await db.reminders.insert_one({
             "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": by_user_id,
@@ -180,9 +190,15 @@ async def create_memory(body: MemoryCreate, user: dict = Depends(get_current_use
     pid = await patient_id_for(user)
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add some text before saving.")
+    if body.image_ids and not body.permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
+    transcript = body.transcript
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=body.image_ids or None)
+    if img_ctx:
+        transcript = f"{transcript.strip()}\n\n{img_ctx}"
     return await save_memory_for_patient(
-        pid, body.transcript, title=body.title, source=body.source, location=body.location,
-        skip_ai=body.skip_ai, use_draft=body.use_draft,
+        pid, transcript, title=body.title, source=body.source, location=body.location,
+        skip_ai=body.skip_ai, use_draft=body.use_draft, image_ids=body.image_ids or None,
         by_user_id=user["id"], by_role=user["role"])
 
 
@@ -192,12 +208,23 @@ async def memory_draft(body: MemoryDraftBody, user: dict = Depends(get_current_u
     pid = await patient_id_for(user)
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="Please add some text to enhance.")
-    await usage.assert_within_cap(pid)
+    transcript = body.transcript.strip()
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=body.image_ids or None)
+    if img_ctx:
+        transcript = f"{transcript}\n\n{img_ctx}"
     _sdoc = await db.audio_settings.find_one({"patient_id": pid}, {"_id": 0, "note_style": 1}) or {}
-    extracted = await ai.process_transcript(body.transcript.strip(), style=_sdoc.get("note_style"))
-    await usage.record(pid, "memory_draft", in_chars=len(body.transcript),
-                       out_chars=len(str(extracted.get("simple_summary", ""))), tier="cheap")
-    return {"draft": extracted, "transcript": body.transcript.strip()}
+    result = await ai_pipeline.extract_memory_fields(
+        pid, transcript, style=_sdoc.get("note_style"))
+    safety = ai.safety_line_for_text(transcript)
+    return {
+        "draft": result["fields"],
+        "transcript": body.transcript.strip(),
+        "confidence": result.get("confidence"),
+        "clarification_question": result.get("clarification_question"),
+        "providers_used": result.get("providers_used", 0),
+        "premium_used": result.get("premium_used", False),
+        "safety_line": safety,
+    }
 
 
 @router.get("/memories")
@@ -211,23 +238,33 @@ async def list_memories(today: bool = False, user: dict = Depends(get_current_us
 
 
 @router.post("/memories/transcribe")
-async def transcribe(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    await patient_id_for(user)
+async def transcribe(
+    file: UploadFile = File(...),
+    cloud_confirmed: bool = Form(False),
+    duration_seconds: Optional[float] = Form(None),
+    user: dict = Depends(get_current_user),
+):
+    pid = await patient_id_for(user)
     data = await file.read()
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Recording is too large (max 25MB).")
     if not data:
         raise HTTPException(status_code=400, detail="The recording was empty. Please try again or type instead.")
-    # Initialise before all code paths so the response can never reference an undefined value.
-    text = ""
     try:
-        text = await ai.transcribe_audio(data, file.filename or "audio.webm")
+        result = await ai_pipeline.transcribe_audio_cost_safe(
+            pid, data, file.filename or "audio.webm",
+            user_confirmed_cloud=cloud_confirmed,
+            duration_seconds=duration_seconds,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[transcribe] {e}")
         raise HTTPException(status_code=500, detail="Could not transcribe the audio. Please try again or type instead.")
-    if not (text or "").strip():
+    text = (result.get("transcript") or "").strip()
+    if not text:
         raise HTTPException(status_code=502, detail="No words were detected. Please try again or type instead.")
-    return {"transcript": text}
+    return result
 
 
 # ---------------- reminders ----------------
@@ -239,6 +276,8 @@ class ReminderCreate(BaseModel):
     due_date: Optional[str] = ""
     due_time: Optional[str] = ""
     repeat_rule: str = "none"
+    image_ids: List[str] = []
+    permission_confirmed: bool = False
 
 
 class ReminderUpdate(BaseModel):
@@ -259,11 +298,26 @@ async def list_reminders(user: dict = Depends(get_current_user)):
 @router.post("/reminders")
 async def create_reminder(body: ReminderCreate, user: dict = Depends(get_current_user)):
     pid = await patient_id_for(user)
+    if body.image_ids and not body.permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
     source = "caregiver" if user["role"] == "caregiver" else "patient"
-    doc = {"id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
-           **body.model_dump(), "status": "pending", "source": source,
-           "created_at": NOW(), "completed_at": None}
+    payload = body.model_dump()
+    image_ids = payload.pop("image_ids", []) or []
+    permission_confirmed = payload.pop("permission_confirmed", False)
+    desc = payload.get("description") or ""
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=image_ids or None)
+    if img_ctx:
+        payload["description"] = f"{desc}\n\n{img_ctx}".strip() if desc else img_ctx
+    doc = {
+        "id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
+        **payload, "status": "pending", "source": source,
+        "created_at": NOW(), "completed_at": None,
+    }
     await db.reminders.insert_one(doc)
+    if image_ids:
+        await imgs.link_images_to_reminder(db, pid, doc["id"], image_ids)
+        doc["image_url"] = imgs.public_image_path(image_ids[0])
+        doc["image_ids"] = image_ids[:imgs.MAX_IMAGES_PER_NOTE]
     await _log(user["id"], "create_reminder", "reminder", doc["id"])
     return {k: v for k, v in doc.items() if k != "_id"}
 
@@ -289,11 +343,7 @@ async def enhance_reminder(body: ReminderEnhanceBody, user: dict = Depends(get_c
     pid = await patient_id_for(user)
     if not body.raw_text.strip():
         raise HTTPException(status_code=400, detail="Please type a reminder first.")
-    await usage.assert_within_cap(pid)
-    result = await ai.enhance_reminder_text(body.raw_text.strip())
-    await usage.record(pid, "reminder_enhance", in_chars=len(body.raw_text),
-                       out_chars=len(result.get("enhanced_text", "")), tier="cheap")
-    return result
+    return await ai_pipeline.extract_reminder_fields(pid, body.raw_text.strip())
 
 
 @router.delete("/reminders/{rid}")
@@ -349,6 +399,8 @@ class AppointmentCreate(BaseModel):
     transport_notes: Optional[str] = ""
     reminder_time: Optional[str] = ""
     ignore_duplicate_warning: bool = False
+    image_ids: List[str] = []
+    permission_confirmed: bool = False
 
 
 @router.get("/appointments")
@@ -375,11 +427,23 @@ async def create_appointment(body: AppointmentCreate, user: dict = Depends(requi
                     "matches": _serialize_dup_matches(matches),
                 },
             )
+    if body.image_ids and not body.permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
     fields = body.model_dump()
     fields.pop("ignore_duplicate_warning", None)
+    image_ids = fields.pop("image_ids", []) or []
+    fields.pop("permission_confirmed", None)
+    notes = fields.get("notes") or ""
+    img_ctx = await imgs.image_context_text(db, pid, image_ids=image_ids or None)
+    if img_ctx:
+        fields["notes"] = f"{notes}\n\n{img_ctx}".strip() if notes else img_ctx
     doc = {"id": str(uuid.uuid4()), "patient_id": pid, "created_by_user_id": user["id"],
            **fields, "created_at": NOW()}
     await db.appointments.insert_one(doc)
+    if image_ids:
+        await imgs.link_images_to_appointment(db, pid, doc["id"], image_ids)
+        doc["image_url"] = imgs.public_image_path(image_ids[0])
+        doc["image_ids"] = image_ids[:imgs.MAX_IMAGES_PER_NOTE]
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
@@ -562,6 +626,8 @@ class AppointmentUpdate(BaseModel):
     status: Optional[str] = None
     calendar_archived: Optional[bool] = None
     dedup_exempt: Optional[bool] = None
+    image_ids: Optional[List[str]] = None
+    permission_confirmed: bool = False
 
 
 async def _appointment_not_dup_fps(pid: str) -> set[str]:
@@ -736,17 +802,25 @@ async def mark_appointment_not_duplicate(
 @router.patch("/appointments/{aid}")
 async def update_appointment(aid: str, body: AppointmentUpdate, user: dict = Depends(require_role("caregiver", "admin"))):
     pid = await patient_id_for(user)
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    if not updates:
+    raw = body.model_dump()
+    image_ids = raw.pop("image_ids", None)
+    permission_confirmed = raw.pop("permission_confirmed", False)
+    if image_ids and not permission_confirmed:
+        raise HTTPException(status_code=400, detail="Please confirm you have permission to save attached photos.")
+    updates = {k: v for k, v in raw.items() if v is not None}
+    if not updates and not image_ids:
         raise HTTPException(status_code=400, detail="No fields to update.")
     if updates.get("status") == "completed":
         updates["completed_at"] = NOW()
-    result = await db.appointments.update_one(
-        {"id": aid, "patient_id": pid},
-        {"$set": updates},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Appointment not found.")
+    if updates:
+        result = await db.appointments.update_one(
+            {"id": aid, "patient_id": pid},
+            {"$set": updates},
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Appointment not found.")
+    if image_ids:
+        await imgs.link_images_to_appointment(db, pid, aid, image_ids)
     doc = await db.appointments.find_one({"id": aid, "patient_id": pid}, PROJ)
     return doc
 
@@ -1206,6 +1280,14 @@ async def chat_save_reminder(body: ChatReminderBody, user: dict = Depends(get_cu
     }
     await db.reminders.insert_one(doc)
     return {k: v for k, v in doc.items() if k != "_id"}
+
+
+# ---------------- AI pipeline (cost-safe) ----------------
+@router.get("/ai/pipeline-config")
+async def ai_pipeline_config(user: dict = Depends(get_current_user)):
+    """Public pipeline flags for frontend — no secrets."""
+    await patient_id_for(user)
+    return ai_pipeline.public_config()
 
 
 # ---------------- AI usage ----------------

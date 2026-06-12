@@ -18,8 +18,15 @@
 
 - Voice input and capture sessions use **temporary** audio/transcripts during processing.
 - Temporary audio is **not permanently saved** unless converted into a saved memory after review.
-- Smart Capture shows visible status (microphone on/off, paused, listening with permission).
+- **Smart Capture Reminders** send check-ins only — they do not record or store audio.
+- Optional Smart Day Capture (settings) requires explicit user start; microphone is never turned on by reminders alone.
 - User can pause, stop, and delete recent temporary capture items.
+
+## Smart Capture Reminders (24-hour helper)
+
+- Opt-in for 24 hours; stores schedule metadata only (start/end, next prompt, skip/quiet flags).
+- No raw audio; no cloud transcription triggered by reminders.
+- Expires automatically after 24 hours.
 
 ## Meeting Capture
 

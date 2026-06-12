@@ -1,17 +1,28 @@
 import { getMemoryVisual } from "../lib/memoryVisuals";
+import { isProtectedImagePath } from "../lib/authenticatedImage";
+import AuthenticatedImage from "./AuthenticatedImage";
 
 export default function MemoryVisualTile({ memory, compact }) {
   const visual = getMemoryVisual(memory);
   const Icon = visual.icon;
-  const hasImage = memory?.image_url || memory?.photo_url;
+  const imagePath = memory?.image_url || memory?.photo_url;
+  const hasImage = isProtectedImagePath(imagePath);
+  const attachCount = memory?.attachment_count || memory?.image_ids?.length || 0;
 
   if (hasImage) {
     return (
-      <img
-        src={memory.image_url || memory.photo_url}
-        alt=""
-        className={`rounded-lg object-cover shrink-0 ${compact ? "w-12 h-12" : "w-full h-24"}`}
-      />
+      <div className={`relative shrink-0 ${compact ? "w-12 h-12" : "w-full h-24"}`}>
+        <AuthenticatedImage
+          path={imagePath}
+          alt=""
+          className={`rounded-lg object-cover ${compact ? "w-12 h-12" : "w-full h-24"}`}
+        />
+        {attachCount > 1 && (
+          <span className="absolute bottom-0 right-0 text-[10px] bg-stone-900/75 text-white px-1.5 py-0.5 rounded-tl-lg rounded-br-lg">
+            +{attachCount - 1}
+          </span>
+        )}
+      </div>
     );
   }
 

@@ -13,6 +13,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Mic, Square, Loader2, Sparkles, CheckCircle2, Bell, Users, Pill, MapPin, Type, X } from "lucide-react";
 import { toast } from "sonner";
+import PhotoAttachmentPicker from "../../components/PhotoAttachmentPicker";
 
 export default function RecordMemory() {
   const navigate = useNavigate();
@@ -31,6 +32,9 @@ export default function RecordMemory() {
   const [locationPreview, setLocationPreview] = useState(null);
   const [captureLanguage, setCaptureLanguage] = useState("auto");
   const [speechUnsupported, setSpeechUnsupported] = useState(false);
+  const [attachedImages, setAttachedImages] = useState([]);
+  const [savePermission, setSavePermission] = useState(false);
+  const [safetyLine, setSafetyLine] = useState(null);
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
   const speechRef = useRef(null);
@@ -100,6 +104,7 @@ export default function RecordMemory() {
       };
       mr.start();
       mediaRef.current = mr;
+      mediaRef.current._startTime = Date.now();
       setRecording(true);
     } catch {
       toast.error("Microphone not available. You can type your memory instead.");
@@ -120,6 +125,10 @@ export default function RecordMemory() {
     try {
       const fd = new FormData();
       fd.append("file", blob, "memory.webm");
+      fd.append("cloud_confirmed", "true");
+      if (mediaRef.current?._startTime) {
+        fd.append("duration_seconds", String((Date.now() - mediaRef.current._startTime) / 1000));
+      }
       const { data } = await api.post("/memories/transcribe", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setTranscript((prev) => (prev ? `${prev} ` : "") + data.transcript);
       setSource("voice");
@@ -138,8 +147,10 @@ export default function RecordMemory() {
     }
     setEnhancing(true);
     try {
-      const { data } = await api.post("/memories/draft", { transcript: transcript.trim() });
+      const imageIds = attachedImages.map((i) => i.id);
+      const { data } = await api.post("/memories/draft", { transcript: transcript.trim(), image_ids: imageIds });
       setDraft(data.draft);
+      setSafetyLine(data.safety_line || null);
       setPhase("review");
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Could not enhance. Try saving without AI.");
@@ -173,6 +184,12 @@ export default function RecordMemory() {
       if (locationEnabled && attachLocation && locationPreview) {
         location = locationPreview;
       }
+      const imageIds = attachedImages.map((i) => i.id);
+      if (imageIds.length && !savePermission) {
+        toast.error("Please confirm you have permission to save attached photos.");
+        setSaving(false);
+        return;
+      }
       const body = {
         transcript: skipAi ? transcript.trim() : transcript.trim(),
         source,
@@ -180,6 +197,8 @@ export default function RecordMemory() {
         skip_ai: skipAi,
         use_draft: skipAi ? null : draft,
         title: skipAi ? undefined : draft?.title,
+        image_ids: imageIds,
+        permission_confirmed: imageIds.length ? savePermission : false,
       };
       const { data } = await api.post("/memories", body);
       setResult(data);
@@ -199,6 +218,9 @@ export default function RecordMemory() {
     setTranscript("");
     setLocationPreview(null);
     setAttachLocation(false);
+    setAttachedImages([]);
+    setSavePermission(false);
+    setSafetyLine(null);
   };
 
   if (phase === "saved" && result) {
@@ -247,7 +269,16 @@ export default function RecordMemory() {
           {locationPreview && (
             <p className="text-sm flex items-center gap-1 text-sky-700"><MapPin className="w-4 h-4" /> {locationPreview.label}</p>
           )}
+          {safetyLine && (
+            <p className="mt-3 text-sm text-amber-800 font-medium" data-testid="memory-safety-line">{safetyLine}</p>
+          )}
         </div>
+        {attachedImages.length > 0 && (
+          <label className="mt-4 flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+            <input type="checkbox" checked={savePermission} onChange={(e) => setSavePermission(e.target.checked)} data-testid="save-photo-permission" />
+            I have permission to save attached photos with this memory.
+          </label>
+        )}
         <div className="mt-6 flex flex-col gap-3">
           <Button onClick={() => saveWithDraft(false)} disabled={saving} className="h-14 rounded-2xl bg-emerald-600 text-lg" data-testid="save-memory-btn">
             {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : "Save memory"}
@@ -315,6 +346,14 @@ export default function RecordMemory() {
           placeholder="Example: Today my daughter Sarah came to visit. We went to the clinic at 3 PM."
           className="mt-2 min-h-[160px] rounded-2xl text-lg p-4"
           data-testid="transcript-input"
+        />
+      </div>
+
+      <div className="mt-5">
+        <PhotoAttachmentPicker
+          onImagesChange={setAttachedImages}
+          sectionTitle="Add photo"
+          sectionSubtitle="Attach an image for context — clinic form, document, place, or family moment."
         />
       </div>
 
