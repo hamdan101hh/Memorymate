@@ -370,6 +370,28 @@ async def cron_run(request: Request):
                 out["capture_status"] += await notify_patient(pid, "capture_status_reminders", payload)
                 await _mark_logged(pid, "capture_status", today)
 
+        # 6) Smart Capture Reminders — gentle check-ins only (no auto-recording)
+        import smart_capture_reminders as scr
+        offset = int(pprefs.get("tz_offset_minutes", 0) or 0)
+        if scr.prompt_is_due(s, now, offset) and not await scr.patient_quiet_hours_blocked(pid, now):
+            import random
+            msg = random.choice(scr.PROMPT_MESSAGES)
+            payload = {
+                "title": "Capture reminder",
+                "body": msg,
+                "url": "/patient/record",
+                "tag": "smart-capture-reminder",
+                "kind": "smart_capture_reminder",
+            }
+            sent = await notify_patient(pid, "capture_status_reminders", payload)
+            out.setdefault("smart_capture_reminders", 0)
+            out["smart_capture_reminders"] += sent
+            if sent:
+                await db.audio_settings.update_one(
+                    {"patient_id": pid},
+                    {"$set": scr.after_prompt_sent_updates(s, NOW(), now, offset)},
+                )
+
     out["ok"] = True
     out["configured"] = True
     return out

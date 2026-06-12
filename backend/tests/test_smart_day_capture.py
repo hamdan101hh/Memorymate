@@ -123,7 +123,7 @@ class TestSafetyWording:
         assert "surveillance" not in card.lower()
         assert "secretly" not in card.lower()
         assert "24-hour recording" not in card.lower()
-        assert "Smart Day Capture" in card
+        assert "Smart Capture Reminders" in card
 
     def test_no_maps_api(self):
         js = (ROOT / "frontend" / "src" / "lib" / "mapLinks.js").read_text(encoding="utf-8")

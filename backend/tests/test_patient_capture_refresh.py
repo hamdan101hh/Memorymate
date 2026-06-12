@@ -119,8 +119,8 @@ class TestSafetyAndConstraints:
 
     def test_smart_capture_card_exists(self):
         js = (ROOT / "frontend" / "src" / "components" / "patient" / "SmartMemoryCaptureCard.js").read_text(encoding="utf-8")
-        assert "Smart Memory Capture" in js
-        assert "Pause anytime" in js
+        assert "Smart Capture Reminders" in js
+        assert "Pause anytime" in js or "nothing is recorded unless" in js.lower()
 
     def test_multilingual_options(self):
         js = (ROOT / "frontend" / "src" / "lib" / "captureLanguage.js").read_text(encoding="utf-8")

@@ -14,6 +14,7 @@ import ai_pipeline
 import usage
 import capture_meaningfulness as meaning
 import image_storage as imgs
+import smart_capture_reminders as scr
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
 NOW = lambda: datetime.now(timezone.utc).isoformat()
@@ -66,6 +67,7 @@ DEFAULT_SETTINGS = {
     "smart_day_min_snippet_seconds": 3,
     "smart_day_cloud_fallback": False,
     "smart_day_draft_hours": 24,
+    **scr.SMART_REMINDER_FIELDS,
 }
 
 DURATION_DELTAS = {
@@ -756,6 +758,105 @@ async def review_action(rid: str, body: ReviewAction, user: dict = Depends(get_c
         {"id": rid}, {"$set": {"status": "resolved", "resolved_action": action, "resolved_at": now}})
     await _log(user["id"], "review_action", "privacy_review", rid, action)
     return {"ok": True, "action": action}
+
+
+# ---------------- Smart Capture Reminders (24h check-ins — no auto-recording) ----------------
+@router.get("/smart-reminders/status")
+async def smart_reminders_status(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    settings = await get_settings_doc(pid)
+    now_utc = datetime.now(timezone.utc)
+    ends = scr._parse_iso(settings.get("smart_capture_ends_at"))
+    if settings.get("smart_capture_reminders_enabled") and ends and now_utc >= ends:
+        await db.audio_settings.update_one({"patient_id": pid}, {"$set": scr.stop_updates()})
+        settings = await get_settings_doc(pid)
+    offset = await scr.patient_tz_offset_minutes(pid)
+    return scr.build_status(settings, offset, now_utc)
+
+
+@router.post("/smart-reminders/start")
+async def smart_reminders_start(user: dict = Depends(get_current_user)):
+    """Enable 24h reminder mode — does not start microphone or recording."""
+    pid = await patient_id_for(user)
+    settings = await get_settings_doc(pid)
+    if settings.get("private_mode"):
+        raise HTTPException(status_code=423, detail="Private Mode is ON. Smart Capture Reminders are disabled.")
+    now_utc = datetime.now(timezone.utc)
+    offset = await scr.patient_tz_offset_minutes(pid)
+    updates = scr.start_updates(NOW(), now_utc, offset)
+    await db.audio_settings.update_one({"patient_id": pid}, {"$set": updates})
+    await _log(user["id"], "smart_reminders_start", "capture", pid)
+    settings = await get_settings_doc(pid)
+    return scr.build_status(settings, offset, now_utc)
+
+
+@router.post("/smart-reminders/stop")
+async def smart_reminders_stop(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    await db.audio_settings.update_one({"patient_id": pid}, {"$set": scr.stop_updates()})
+    await _log(user["id"], "smart_reminders_stop", "capture", pid)
+    offset = await scr.patient_tz_offset_minutes(pid)
+    return scr.build_status(await get_settings_doc(pid), offset)
+
+
+class SmartRemindersPauseBody(BaseModel):
+    paused: bool = True
+
+
+@router.post("/smart-reminders/pause")
+async def smart_reminders_pause(body: SmartRemindersPauseBody, user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    await db.audio_settings.update_one(
+        {"patient_id": pid}, {"$set": {"smart_capture_paused": body.paused}},
+    )
+    offset = await scr.patient_tz_offset_minutes(pid)
+    return scr.build_status(await get_settings_doc(pid), offset)
+
+
+@router.post("/smart-reminders/skip-next")
+async def smart_reminders_skip_next(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    settings = await get_settings_doc(pid)
+    now_utc = datetime.now(timezone.utc)
+    offset = await scr.patient_tz_offset_minutes(pid)
+    updates = scr.skip_next_updates(settings, now_utc, offset)
+    await db.audio_settings.update_one({"patient_id": pid}, {"$set": updates})
+    await _log(user["id"], "smart_reminders_skip_next", "capture", pid)
+    return scr.build_status(await get_settings_doc(pid), offset, now_utc)
+
+
+@router.post("/smart-reminders/skip-today")
+async def smart_reminders_skip_today(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    now_utc = datetime.now(timezone.utc)
+    offset = await scr.patient_tz_offset_minutes(pid)
+    updates = scr.skip_today_updates(now_utc, offset)
+    await db.audio_settings.update_one({"patient_id": pid}, {"$set": updates})
+    await _log(user["id"], "smart_reminders_skip_today", "capture", pid)
+    return scr.build_status(await get_settings_doc(pid), offset, now_utc)
+
+
+@router.post("/smart-reminders/quiet-day")
+async def smart_reminders_quiet_day(user: dict = Depends(get_current_user)):
+    pid = await patient_id_for(user)
+    now_utc = datetime.now(timezone.utc)
+    offset = await scr.patient_tz_offset_minutes(pid)
+    updates = scr.quiet_day_updates(now_utc, offset)
+    await db.audio_settings.update_one({"patient_id": pid}, {"$set": updates})
+    await _log(user["id"], "smart_reminders_quiet_day", "capture", pid)
+    return scr.build_status(await get_settings_doc(pid), offset, now_utc)
+
+
+@router.post("/smart-reminders/ack-prompt")
+async def smart_reminders_ack_prompt(user: dict = Depends(get_current_user)):
+    """Mark a check-in as shown/sent and schedule the next reminder (no recording)."""
+    pid = await patient_id_for(user)
+    settings = await get_settings_doc(pid)
+    now_utc = datetime.now(timezone.utc)
+    offset = await scr.patient_tz_offset_minutes(pid)
+    updates = scr.after_prompt_sent_updates(settings, NOW(), now_utc, offset)
+    await db.audio_settings.update_one({"patient_id": pid}, {"$set": updates})
+    return scr.build_status(await get_settings_doc(pid), offset, now_utc)
 
 
 # ---------------- Smart Day Capture (cost-safe browser speech drafts) ----------------
