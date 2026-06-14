@@ -91,9 +91,12 @@ class TestProductPositioningAssets:
         assert (ROOT / "docs" / "PRODUCT_POSITIONING.md").is_file()
 
     def test_onboarding_copy_no_forbidden_medical_claims(self):
-        onboarding = (ROOT / "frontend" / "src" / "pages" / "Onboarding.js").read_text(encoding="utf-8").lower()
-        purpose_cfg = (ROOT / "frontend" / "src" / "lib" / "purposeConfig.js").read_text(encoding="utf-8").lower()
-        combined = onboarding + purpose_cfg
+        paths = [
+            ROOT / "frontend/src/pages/Onboarding.js",
+            ROOT / "frontend/src/lib/purposeConfig.js",
+            ROOT / "frontend/src/lib/onboardingConfig.js",
+        ]
+        combined = "".join(p.read_text(encoding="utf-8").lower() for p in paths)
         for phrase in FORBIDDEN_ONBOARDING_PHRASES:
             assert phrase not in combined, f"Forbidden phrase in onboarding: {phrase}"
 

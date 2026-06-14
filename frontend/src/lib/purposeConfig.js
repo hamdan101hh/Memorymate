@@ -50,8 +50,29 @@ function labelFor(value) {
   return PURPOSE_OPTIONS.find((o) => o.value === value)?.title || "MemoryMate";
 }
 
-/** Dashboard title + subtitle for caregiver home. */
-export function getCaregiverDashboardCopy(purpose, role) {
+/** Dashboard title + subtitle for caregiver home — prefers adaptive mode when set. */
+export function getCaregiverDashboardCopy(purpose, role, mode) {
+  const modeMap = {
+    private_executive: {
+      title: "Your private workspace",
+      subtitle: "Meetings, reminders, appointments, and notes — kept private to you.",
+    },
+    daily_memory_support: {
+      title: "Daily memory support",
+      subtitle: "Gentle check-ins, reminders, and summaries for everyday organization.",
+    },
+    trusted_supporter: {
+      title: "Trusted supporter overview",
+      subtitle: "Coordinate reminders, appointments, and memories with consent.",
+    },
+    decide_later: {
+      title: "Today's overview",
+      subtitle: "Start simple — invite a trusted supporter anytime from Family circle.",
+    },
+  };
+  if (mode && modeMap[mode]) {
+    return modeMap[mode];
+  }
   const p = purpose || (role === "caregiver" ? "caregiver" : "unsure");
   const map = {
     self: {
@@ -82,9 +103,18 @@ export function getCaregiverDashboardCopy(purpose, role) {
   return map[p] || map.unsure;
 }
 
-/** Patient home greeting area copy. */
-export function getPatientHomeCopy(purpose) {
-  const p = purpose || "self";
+/** Patient home greeting area copy — prefers adaptive mode when set. */
+export function getPatientHomeCopy(purposeOrMode) {
+  const modeMap = {
+    private_executive: { tagline: "Your private space for notes, meetings, and reminders." },
+    daily_memory_support: { tagline: "Extra memory support for your day — calm and organized." },
+    trusted_supporter: { tagline: "Your day, with optional help from someone you trust." },
+    decide_later: { tagline: "Your reminders and memories are here. Customize anytime." },
+  };
+  if (purposeOrMode && modeMap[purposeOrMode]) {
+    return modeMap[purposeOrMode];
+  }
+  const p = purposeOrMode || "self";
   const map = {
     self: { tagline: "Your day, organized calmly." },
     busy_schedule: { tagline: "Today's priorities at a glance." },

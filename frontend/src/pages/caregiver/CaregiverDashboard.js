@@ -75,7 +75,8 @@ export default function CaregiverDashboard() {
     input?.focus();
   };
 
-  const dashCopy = getCaregiverDashboardCopy(user?.memorymate_purpose, user?.role);
+  const dashCopy = getCaregiverDashboardCopy(user?.memorymate_purpose, user?.role, user?.memorymate_mode);
+  const mode = user?.memorymate_mode;
 
   if (!ov || !apptDash) return <LoadingState />;
 
@@ -116,6 +117,22 @@ export default function CaregiverDashboard() {
           </Button>
         }
       />
+
+      {mode === "trusted_supporter" && (
+        <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-4 flex flex-wrap items-center justify-between gap-3" data-testid="trusted-supporter-invite-cta">
+          <p className="text-sm text-stone-700">
+            Invite a trusted supporter to Family circle — optional, and you control what they see.
+          </p>
+          <Button asChild variant="outline" size="sm" className="rounded-xl">
+            <Link to="/caregiver/family">Open Family circle</Link>
+          </Button>
+        </div>
+      )}
+      {mode === "private_executive" && (
+        <p className="mb-4 text-sm text-stone-600" data-testid="private-mode-note">
+          Private mode — focused on your meetings, reminders, and notes.
+        </p>
+      )}
 
       {/* Top: quick note + quick actions */}
       <div className="grid lg:grid-cols-2 gap-4 mb-4" data-testid="dashboard-top-actions">

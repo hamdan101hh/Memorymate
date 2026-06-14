@@ -20,7 +20,8 @@ const TILES = [
 
 export default function PatientHome() {
   const { user } = useAuth();
-  const homeCopy = getPatientHomeCopy(user?.memorymate_purpose);
+  const homeCopy = getPatientHomeCopy(user?.memorymate_mode || user?.memorymate_purpose);
+  const mode = user?.memorymate_mode;
   const now = new Date();
   const hour = now.getHours();
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -37,6 +38,17 @@ export default function PatientHome() {
           {homeCopy.tagline} MemoryMate helps organize daily life — it is not emergency support.
         </p>
       </div>
+
+      {mode === "decide_later" && (
+        <p className="mt-4 text-sm text-stone-600 bg-stone-100 border border-stone-200 rounded-xl p-3" data-testid="invite-supporter-later-note">
+          You can invite a trusted supporter later from Settings — no rush.
+        </p>
+      )}
+      {mode === "daily_memory_support" && user?.supporter_invite_preference !== "no" && (
+        <p className="mt-4 text-sm text-stone-600 bg-sky-50 border border-sky-100 rounded-xl p-3" data-testid="optional-supporter-note">
+          Optional: invite a trusted supporter later if you want extra help remembering your day.
+        </p>
+      )}
 
       <TodayAtAGlance />
 

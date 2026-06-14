@@ -159,7 +159,7 @@ Align with: `docs/SMART_DAY_CAPTURE_LIMITATIONS.md`, `docs/VOICE_TRANSCRIPTION_C
 | Phase | Deliverable | Out of scope |
 |-------|-------------|--------------|
 | **A — Docs + copy** | This plan, onboarding copy audit, positioning updates | New capture engine |
-| **B — Adaptive onboarding UI** | Four modes + support questions + branching | Focus Capture mic pipeline |
+| **B — Adaptive onboarding UI** | **Shipped:** `docs/ADAPTIVE_ONBOARDING_PLAN.md`, onboarding flow, API fields | Focus Capture mic pipeline |
 | **C — Focus Capture MVP** | Opt-in session capture with §9 guardrails | 24/7 background |
 | **D — Connectors research** | Granola / export connectors spec | Core listening |
 
