@@ -128,7 +128,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 |------|-------------------|-------------|
 | Backend suite | `pytest` from `backend/` | ~316 passed, few skipped |
 | Frontend build | `CI=false yarn build` | Success |
-| Manual smoke | Record memory, calendar, reminders | Founder / QA sign-off |
+| Manual smoke | Record memory, calendar, reminders | See `docs/BROWSER_SMOKE_TEST_CHECKLIST.md` |
 | Auth tests | `backend/tests/` auth flows | Login, demo off in prod |
 | Upload tests | `test_image_attachments.py`, `test_photo_memory_attachments.py` | Type/size/count limits |
 | Calendar tests | `test_calendar_*.py` | OAuth mock / connector |

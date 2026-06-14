@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import DashboardShell from "../../components/DashboardShell";
 import {
   LayoutDashboard, UserRound, Clock, Bell, Pill, CalendarClock,
@@ -31,5 +31,6 @@ const ITEMS = [
 ];
 
 export default function CaregiverLayout() {
-  return <DashboardShell items={ITEMS}><Outlet /></DashboardShell>;
+  const { pathname } = useLocation();
+  return <DashboardShell items={ITEMS}><Outlet key={pathname} /></DashboardShell>;
 }

@@ -21,7 +21,7 @@ const TOP_ACTIONS = [
   { key: "reminder", to: "/caregiver/reminders", icon: Plus, label: "Add reminder" },
   { key: "quicknote", scroll: "quick-note-card", icon: StickyNote, label: "Add quick note" },
   { key: "calendar", to: "/caregiver/calendar", icon: CalendarDays, label: "Open calendar" },
-  { key: "duplicates", to: "/caregiver/appointments", icon: Copy, label: "Review duplicates", badgeKey: "dup" },
+  { key: "duplicates", to: "/caregiver/appointments?filter=duplicates", icon: Copy, label: "Review duplicates", badgeKey: "dup" },
   { key: "memory", to: "/caregiver/capture", icon: Radio, label: "Record memory" },
 ];
 

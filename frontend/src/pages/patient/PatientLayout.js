@@ -33,7 +33,7 @@ export default function PatientLayout() {
         </div>
       </header>
       <main className="max-w-2xl mx-auto px-5 py-7 pb-16">
-        <Outlet />
+        <Outlet key={pathname} />
       </main>
     </div>
   );
