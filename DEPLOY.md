@@ -47,7 +47,10 @@ Architecture: **Frontend** (React) on Vercel · **Backend** (FastAPI) on Render 
 ## 5. Verify & secure
 
 - Open the Vercel URL, sign in, and click through patient + caregiver.
-- **Security (important for a public site):** the app currently seeds demo accounts and exposes a `/api/auth/demo-login` endpoint that issues a session for any role **without a password**. That's great for a demo but unsafe for real users. Before going fully public, gate seeding + demo-login behind an env flag (ask the agent to add `ENABLE_DEMO=false` handling), and set a strong `ADMIN_PASSWORD`.
+- **Production demo mode (required):** set `ENABLE_DEMO=false` on Render before real users. When `true`, `/api/auth/demo-login` issues a session for any role **without a password** and seeds demo accounts. Local dev keeps `ENABLE_DEMO=true` in `backend/.env`.
+- Set `CORS_ORIGINS` to your exact Vercel URL (not `*`).
+- Set a strong `ADMIN_PASSWORD` (do not use the example default).
+- See `docs/DEPLOYMENT_READINESS_AUDIT.md` for the full pre-launch checklist.
 
 ---
 
