@@ -70,7 +70,15 @@ Branch `cursor/onboarding-smoke-polish` · `tools/smoke-onboarding.mjs` + `tools
 
 **Logic fix:** Productivity goal + decide later + low support now recommends `decide_later` instead of incorrectly defaulting to daily memory support.
 
-## Related
+## Completion polish (2026-06-07)
+
+Branch `cursor/onboarding-completion-polish` · extended `tools/smoke-onboarding.mjs`
+
+- Full finish flow: consent, safety, optional emergency contact, redirect to home
+- Patient home taglines per mode (`patient-home-tagline` test id)
+- Trusted supporter / decide-later home notes; caregiver + patient onboarding supporter hints
+
+---
 
 - [NEXT_PRODUCT_STAGE_PLAN.md](./NEXT_PRODUCT_STAGE_PLAN.md)
 - [PRODUCT_POSITIONING.md](./PRODUCT_POSITIONING.md)

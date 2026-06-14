@@ -34,11 +34,19 @@ export default function PatientHome() {
       <div className="rounded-3xl bg-gradient-to-br from-sky-600 to-sky-700 text-white p-7 shadow-md">
         <p className="text-sky-100 text-lg">{dateStr} · {timeStr}</p>
         <h1 className="font-heading text-3xl sm:text-4xl font-extrabold mt-1">{greet}, {firstName}</h1>
-        <p className="mt-4 text-sky-50 text-lg leading-relaxed">
+        <p className="mt-4 text-sky-50 text-lg leading-relaxed" data-testid="patient-home-tagline">
           {homeCopy.tagline} MemoryMate helps organize daily life — it is not emergency support.
         </p>
       </div>
 
+      {mode === "trusted_supporter" && (
+        <p
+          className="mt-4 text-sm text-stone-600 bg-violet-50 border border-violet-100 rounded-xl p-3"
+          data-testid="trusted-supporter-invite-note"
+        >
+          Optional: invite a trusted supporter or support person from Settings when you&apos;re ready — never required.
+        </p>
+      )}
       {mode === "decide_later" && (
         <p className="mt-4 text-sm text-stone-600 bg-stone-100 border border-stone-200 rounded-xl p-3" data-testid="invite-supporter-later-note">
           You can invite a trusted supporter later from Settings — no rush.

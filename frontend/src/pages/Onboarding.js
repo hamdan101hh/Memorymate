@@ -169,7 +169,7 @@ export default function Onboarding() {
           />
         </div>
       ),
-      canNext: () => !!(selectedMode || recommendedMode),
+      canNext: () => true,
     },
     {
       icon: ShieldCheck,
@@ -210,8 +210,10 @@ export default function Onboarding() {
   const s = steps[step];
   const last = step === steps.length - 1;
   const canNext = s.canNext();
-  const showSupporterHint =
+  const showCaregiverSupporterHint =
     (selectedMode || recommendedMode) === "trusted_supporter" && user?.role === "caregiver";
+  const showPatientSupporterHint =
+    (selectedMode || recommendedMode) === "trusted_supporter" && user?.role === "patient";
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col" data-testid="onboarding-page">
@@ -231,9 +233,21 @@ export default function Onboarding() {
           </p>
           {s.content}
 
-          {showSupporterHint && step >= 3 && (
-            <p className="mt-4 text-sm text-stone-600 bg-violet-50 border border-violet-100 rounded-xl p-3 text-left">
-              After setup, open <strong>Family circle</strong> to invite a trusted supporter. Sharing is always your choice.
+          {showCaregiverSupporterHint && step >= 3 && (
+            <p
+              className="mt-4 text-sm text-stone-600 bg-violet-50 border border-violet-100 rounded-xl p-3 text-left"
+              data-testid="onboarding-supporter-hint"
+            >
+              After setup, open <strong>Family circle</strong> in the menu to invite someone you trust.
+              Sharing is always your choice — never required.
+            </p>
+          )}
+          {showPatientSupporterHint && step >= 3 && (
+            <p
+              className="mt-4 text-sm text-stone-600 bg-violet-50 border border-violet-100 rounded-xl p-3 text-left"
+              data-testid="onboarding-supporter-hint"
+            >
+              After setup, you can invite a trusted supporter from Settings — only when you&apos;re ready.
             </p>
           )}
 

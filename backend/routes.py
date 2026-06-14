@@ -24,6 +24,21 @@ NOW = lambda: datetime.now(timezone.utc).isoformat()
 PROJ = {"_id": 0}
 
 
+def _memory_on_local_day(created_at: str, day: str, tz_name: str) -> bool:
+    """Match memory created_at (UTC ISO) to a calendar day in the patient's timezone."""
+    if not created_at:
+        return False
+    try:
+        raw = created_at.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local_day = dt.astimezone(ZoneInfo(tz_name)).date().isoformat()
+        return local_day == day
+    except Exception:
+        return created_at.startswith(day)
+
+
 # ---------------- helpers ----------------
 async def patient_id_for(user: dict) -> str:
     """Return the patient profile id accessible to this user."""
@@ -1333,7 +1348,7 @@ async def summary_today(user: dict = Depends(get_current_user)):
         today = datetime.now(ZoneInfo(tz_name)).date().isoformat()
     except Exception:
         today = date.today().isoformat()
-    memories = [m for m in await _list("memories", pid) if (m.get("created_at") or "").startswith(today)]
+    memories = [m for m in await _list("memories", pid) if _memory_on_local_day(m.get("created_at"), today, tz_name)]
     reminders = await _list("reminders", pid)
     notes = await _list("caregiver_notes", pid)
     if user["role"] == "patient":

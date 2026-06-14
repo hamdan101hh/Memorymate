@@ -106,10 +106,18 @@ export function getCaregiverDashboardCopy(purpose, role, mode) {
 /** Patient home greeting area copy — prefers adaptive mode when set. */
 export function getPatientHomeCopy(purposeOrMode) {
   const modeMap = {
-    private_executive: { tagline: "Your private space for notes, meetings, and reminders." },
-    daily_memory_support: { tagline: "Extra memory support for your day — calm and organized." },
-    trusted_supporter: { tagline: "Your day, with optional help from someone you trust." },
-    decide_later: { tagline: "Your reminders and memories are here. Customize anytime." },
+    private_executive: {
+      tagline: "Your private space for meetings, notes, reminders, appointments, and ideas.",
+    },
+    daily_memory_support: {
+      tagline: "Gentle check-ins, daily summaries, and reminders for the important things.",
+    },
+    trusted_supporter: {
+      tagline: "Your day, organized — invite a trusted supporter when you're ready.",
+    },
+    decide_later: {
+      tagline: "Your reminders and memories are here. Customize anytime.",
+    },
   };
   if (purposeOrMode && modeMap[purposeOrMode]) {
     return modeMap[purposeOrMode];
