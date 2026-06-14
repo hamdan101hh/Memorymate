@@ -280,8 +280,22 @@ These are **not required** for MemoryMate’s current MVP and should stay disabl
 
 ---
 
+## Operations / monitoring (free-first)
+
+| Item | Detail |
+|------|--------|
+| **API health** | `GET /api/` → `{"status":"ok","app":"MemoryMate"}` (`backend/server.py`) |
+| **Render health check** | `healthCheckPath: /api/` in `render.yaml` |
+| **Logs** | Render (API), Vercel (frontend), Atlas (DB metrics) |
+| **Smoke** | `tools/smoke-browser-pass.mjs`, `tools/smoke-interactions.mjs` |
+| **Incident plan** | `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
+| **Paid APM** | Sentry, Datadog, etc. — **not enabled**; approval required |
+
+---
+
 ## Cross-reference
 
 - Deployment readiness audit: `docs/DEPLOYMENT_READINESS_AUDIT.md`
+- Production error monitoring: `docs/PRODUCTION_ERROR_MONITORING_PLAN.md`
 - Technical readiness scoring: `docs/TECHNICAL_READINESS_CHECKLIST.md`
 - Founder cost report: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`
