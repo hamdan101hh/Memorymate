@@ -61,17 +61,22 @@ export function recommendMode(mainGoal, privacyChoice, checkIn, forget) {
   if (privacyChoice === "trusted_supporter" || mainGoal === "help_someone") {
     return "trusted_supporter";
   }
+  if (mainGoal === "extra_memory_support") {
+    return "daily_memory_support";
+  }
   const score = supportScore(checkIn, forget);
   const productivityGoals = new Set([
     "remember_tasks",
     "capture_meetings_ideas",
     "organize_personal",
-    "not_sure",
   ]);
-  if (score <= 2 && productivityGoals.has(mainGoal) && privacyChoice !== "decide_later") {
+  if (privacyChoice === "decide_later" && (mainGoal === "not_sure" || score <= 2)) {
+    return "decide_later";
+  }
+  if (score <= 2 && productivityGoals.has(mainGoal) && privacyChoice === "private") {
     return "private_executive";
   }
-  if (privacyChoice === "decide_later" && score <= 2 && mainGoal === "not_sure") {
+  if (mainGoal === "not_sure" && score <= 2) {
     return "decide_later";
   }
   return "daily_memory_support";

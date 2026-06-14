@@ -16,6 +16,7 @@ Manual QA pass before launch or after large UI changes. Complements automated `p
 | Health | `curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/` → `200` |
 | Clean session | Log out or use incognito before role-specific sections |
 | Automated sweep | `npx -p playwright@1.52.0` temp install + `node tools/smoke-browser-pass.mjs` (from repo with frontend running) |
+| Onboarding smoke | `node tools/test-onboarding-recommend.mjs` (no browser) · `node tools/smoke-onboarding.mjs` (needs stack + Playwright) |
 
 ---
 
@@ -253,10 +254,39 @@ Branch `cursor/final-smoke-interaction-fixes` · Playwright `tools/smoke-interac
 
 ---
 
+**Last full pass:** 2026-06-07 · branch `cursor/onboarding-smoke-polish` · onboarding smoke + prior route sweep
+
+---
+
+## 10. Adaptive onboarding smoke (2026-06-07)
+
+Branch `cursor/onboarding-smoke-polish` · `tools/smoke-onboarding.mjs` (Playwright) + `tools/test-onboarding-recommend.mjs` (Node unit).
+
+| Path | Answers (summary) | Expected mode | Result |
+|------|-------------------|---------------|--------|
+| Private Executive | Capture meetings; private; rarely / rarely | `private_executive` | Pass |
+| Daily Memory Support | Extra support; decide later; often / sometimes | `daily_memory_support` | Pass |
+| Trusted Supporter | Help someone; invite supporter; often / often | `trusted_supporter` | Pass |
+| Decide Later | Not sure; decide later; sometimes / prefer not to say | `decide_later` | Pass |
+
+| Check | Result |
+|-------|--------|
+| No disability / dementia / surveillance wording in onboarding UI | Pass (automated phrase scan in pytest) |
+| Supporter invite suggested, not forced | Pass |
+| User can override recommended mode | Pass (mode picker on step 4) |
+| Demo user onboarding reset via API before each path | Pass |
+| Caregiver trusted-supporter hint (Family circle) | N/T (patient paths only in script) |
+
+**N/T this pass:** Full finish flow through consent + emergency contact; patient home copy per mode after complete onboarding.
+
+---
+
 ## Related docs
 
 - `docs/TECHNICAL_READINESS_CHECKLIST.md` — launch gates and automated tests
 - `docs/CLEANUP_NOTES.md` — cleaning duplicate test data
 - `docs/CALENDAR_PRODUCTION_TODO.md` — calendar-specific QA
 - `tools/smoke-browser-pass.mjs` — automated route sweep (requires Playwright)
+- `tools/smoke-onboarding.mjs` — adaptive onboarding recommendation paths
+- `tools/test-onboarding-recommend.mjs` — recommendation logic unit check (no browser)
 - `tools/smoke-interactions.mjs` — Smart Capture, photo modals, mobile dialogs

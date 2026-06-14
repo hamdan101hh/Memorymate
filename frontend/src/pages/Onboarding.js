@@ -44,10 +44,10 @@ export default function Onboarding() {
   }, [mainGoal, privacyChoice, checkInFrequency, forgetfulnessFrequency]);
 
   useEffect(() => {
-    if (step === 3 && !selectedMode) {
+    if (step === 3) {
       setSelectedMode(recommendedMode);
     }
-  }, [step, recommendedMode, selectedMode]);
+  }, [step, recommendedMode]);
 
   const finish = async () => {
     setSaving(true);
@@ -114,7 +114,7 @@ export default function Onboarding() {
       icon: Sparkles,
       color: "bg-emerald-600",
       title: "A few gentle questions",
-      body: "This helps MemoryMate suggest a setup — not a diagnosis or score.",
+      body: "This helps suggest a comfortable setup — your answers stay private.",
       content: (
         <div className="mt-6 space-y-6 text-left">
           <div>
@@ -153,12 +153,19 @@ export default function Onboarding() {
       ),
       content: (
         <div className="mt-6 max-h-[50vh] overflow-y-auto mm-scrollbar">
+          <p
+            className="text-sm text-stone-500 mb-2 text-left"
+            data-testid="onboarding-recommended-mode"
+          >
+            Suggested: {MODE_OPTIONS.find((m) => m.value === recommendedMode)?.title || recommendedMode}
+          </p>
           <p className="text-sm text-stone-600 mb-3 text-left">You can pick a different mode if you prefer.</p>
           <OnboardingOptionGroup
             options={MODE_OPTIONS}
             value={selectedMode || recommendedMode}
             onChange={setSelectedMode}
             testIdPrefix="onboarding-mode"
+            highlightValue={recommendedMode}
           />
         </div>
       ),
@@ -216,7 +223,12 @@ export default function Onboarding() {
             <s.icon className="w-10 h-10" strokeWidth={1.8} />
           </span>
           <h1 className="font-heading text-3xl font-bold mt-7">{s.title}</h1>
-          <p className="mt-3 text-lg text-stone-600 leading-relaxed">{s.body}</p>
+          <p
+            className="mt-3 text-lg text-stone-600 leading-relaxed"
+            data-testid={step === 3 ? "onboarding-recommendation-message" : undefined}
+          >
+            {s.body}
+          </p>
           {s.content}
 
           {showSupporterHint && step >= 3 && (
