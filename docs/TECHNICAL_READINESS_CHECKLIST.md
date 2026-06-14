@@ -11,7 +11,7 @@
 | Item | Status |
 |------|--------|
 | **Main branch** | Active development line; feature branches merged via PR |
-| **Backend tests** | Expect **~316 passed**, **~4 skipped** (`cd backend && REACT_APP_BACKEND_URL=http://localhost:8000 python -m pytest tests/ -q`) |
+| **Backend tests** | Expect **~327 passed**, **~4 skipped** (`cd backend && REACT_APP_BACKEND_URL=http://localhost:8000 python -m pytest tests/ -q`) |
 | **Frontend build** | Expect success (`cd frontend && CI=false yarn build`) |
 | **Working tree** | Should be clean before release tagging |
 
@@ -57,7 +57,7 @@
 |-------|----------------|--------------|------------------|
 | **Frontend** | React (CRA), patient + caregiver + admin + public routes | `frontend/src/` | Build passes; demo mode off in prod URL |
 | **Backend API** | FastAPI, `server.py` routers | `backend/routes.py`, `capture.py`, etc. | Health check `/api/`; CORS locked to frontend origin |
-| **Database** | MongoDB via Motor | `backend/db.py` | Atlas M0 or managed cluster; backups planned |
+| **Database** | MongoDB via Motor | `backend/db.py` | Atlas M0 or managed cluster; backups + **restore drill** — see `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` |
 | **Auth** | JWT bearer, role-based | `backend/auth.py` | Strong `JWT_SECRET`; demo login disabled in prod |
 | **File / image storage** | Local `uploads/patient_images/` + Mongo metadata | `image_storage.py`, `image_routes.py` | Production object storage TODO |
 | **Notifications** | Web Push (VAPID), in-app | `notifications.py` | VAPID keys set or push gracefully disabled |
@@ -153,7 +153,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 | Security (auth, images) | **Green** | Auth-gated assets; encryption for calendar tokens |
 | Rate limiting (HTTP) | **Yellow** | Usage caps only; consider edge rate limits |
 | Monitoring / logging | **Yellow** | No full APM checklist yet |
-| Backups / DR | **Yellow** | Mongo backup plan needed |
+| Backups / DR | **Yellow** | Runbook added — **restore drill required before real users** |
 | Legal / App Store | **Yellow** | Public pages exist; mobile app review if applicable |
 | Demo mode disabled | **Red** if `ENABLE_DEMO=true` in prod | Must be false for real users |
 | Cost controls documented | **Green** | Founder cost report + guardrails docs |
@@ -169,7 +169,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - Full manual browser smoke on staging (all roles, mobile widths)
 - Real deployment environment audit — see `docs/DEPLOYMENT_READINESS_AUDIT.md`
 - Monitoring / alerting (errors, AI spend, voice usage anomalies)
-- MongoDB backup and restore runbook
+- ~~MongoDB backup and restore runbook~~ — **added:** `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` (complete restore drill before launch)
 - HTTP rate limiting at API edge
 - App Store / legal review if native mobile wrapper ships
 - WhatsApp Business API production onboarding (not started)
@@ -180,6 +180,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 ## Related docs
 
 - `docs/DEPLOYMENT_READINESS_AUDIT.md` — pre-launch env, CORS, demo mode, Render/Vercel
+- `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — MongoDB backup, restore, and DR drill (launch blocker until tested)
 - `docs/MEMORYMATE_BUILD_STACK_CHECKLIST.md` — stack layers and env index
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`
 - `docs/VOICE_TRANSCRIPTION_COST_GUARDRAILS.md`
