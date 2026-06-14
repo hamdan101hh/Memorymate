@@ -124,6 +124,7 @@ function AppRoutes() {
         <Route path="capture/smart-day-drafts" element={<SmartDayDrafts />} />
         <Route path="share" element={<ShareExport />} />
         <Route path="memory-book" element={<PatientMemoryBook />} />
+        <Route path="*" element={<Navigate to="/patient" replace />} />
       </Route>
 
       <Route path="/caregiver" element={<Protected roles={["caregiver", "admin"]}><CaregiverLayout /></Protected>}>
@@ -152,6 +153,7 @@ function AppRoutes() {
         <Route path="family" element={<CgFamily />} />
         <Route path="whatsapp" element={<CgWhatsApp />} />
         <Route path="calendar" element={<CalendarConnector />} />
+        <Route path="*" element={<Navigate to="/caregiver" replace />} />
       </Route>
 
       <Route path="/admin" element={<Protected roles={["admin"]}><AdminLayout /></Protected>}>
@@ -159,6 +161,7 @@ function AppRoutes() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="data" element={<AdminCollections />} />
         <Route path="logs" element={<AdminLogs />} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
