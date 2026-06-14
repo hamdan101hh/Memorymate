@@ -187,6 +187,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — production error monitoring and incident response
 - `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production environment go/no-go audit
 - `docs/NEXT_PRODUCT_STAGE_PLAN.md` — next stage: Focus Capture, adaptive onboarding, no 24/7
+- `docs/ADAPTIVE_ONBOARDING_PLAN.md` — adaptive onboarding modes (implemented)
 - `docs/MEMORYMATE_BUILD_STACK_CHECKLIST.md` — stack layers and env index
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`
 - `docs/VOICE_TRANSCRIPTION_COST_GUARDRAILS.md`

@@ -77,6 +77,8 @@ Current API values (backward compatible):
 
 Do not market “24/7 listening.” Next opt-in session mode: **Focus Capture** or **Conversation Memory Mode** — requirements in `docs/NEXT_PRODUCT_STAGE_PLAN.md`. Granola and similar tools: optional meeting-notes connector research only — not the core listening engine.
 
+**Adaptive onboarding** is implemented — see `docs/ADAPTIVE_ONBOARDING_PLAN.md`.
+
 ## Pricing / cost principle
 
 - **Start simple. Connect only what you need.**

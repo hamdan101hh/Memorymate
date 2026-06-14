@@ -1,22 +1,36 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import { Logo } from "../components/common";
-import PurposeSelector from "../components/PurposeSelector";
+import OnboardingOptionGroup from "../components/OnboardingOptionGroup";
+import {
+  MAIN_GOAL_OPTIONS,
+  PRIVACY_OPTIONS,
+  FREQUENCY_OPTIONS,
+  FORGET_OPTIONS,
+  MODE_OPTIONS,
+  recommendMode,
+  recommendationMessage,
+  supporterInvitePreference,
+} from "../lib/onboardingConfig";
 import { PRODUCT_SAFETY_LINE } from "../lib/purposeConfig";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox } from "../components/ui/checkbox";
 import { Progress } from "../components/ui/progress";
-import { Sparkles, ShieldCheck, Phone, ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { Sparkles, ShieldCheck, Phone, ArrowRight, ArrowLeft, Check, Users } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Onboarding() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
-  const [purpose, setPurpose] = useState(user?.memorymate_purpose || "");
+  const [mainGoal, setMainGoal] = useState(user?.main_goal || "");
+  const [privacyChoice, setPrivacyChoice] = useState(user?.privacy_choice || "");
+  const [checkInFrequency, setCheckInFrequency] = useState(user?.check_in_frequency || "");
+  const [forgetfulnessFrequency, setForgetfulnessFrequency] = useState(user?.forgetfulness_frequency || "");
+  const [selectedMode, setSelectedMode] = useState(user?.memorymate_mode || "");
   const [consent, setConsent] = useState(user?.consent_accepted || false);
   const [ecName, setEcName] = useState(user?.emergency_contact_name || "");
   const [ecPhone, setEcPhone] = useState(user?.emergency_contact_phone || "");
@@ -24,11 +38,28 @@ export default function Onboarding() {
 
   const home = user?.role === "patient" ? "/patient" : "/caregiver";
 
+  const recommendedMode = useMemo(() => {
+    if (!mainGoal || !privacyChoice || !checkInFrequency || !forgetfulnessFrequency) return "decide_later";
+    return recommendMode(mainGoal, privacyChoice, checkInFrequency, forgetfulnessFrequency);
+  }, [mainGoal, privacyChoice, checkInFrequency, forgetfulnessFrequency]);
+
+  useEffect(() => {
+    if (step === 3 && !selectedMode) {
+      setSelectedMode(recommendedMode);
+    }
+  }, [step, recommendedMode, selectedMode]);
+
   const finish = async () => {
     setSaving(true);
     try {
+      const mode = selectedMode || recommendedMode || "decide_later";
       await api.patch("/auth/onboarding", {
-        memorymate_purpose: purpose || "unsure",
+        memorymate_mode: mode,
+        main_goal: mainGoal || "not_sure",
+        privacy_choice: privacyChoice || "decide_later",
+        check_in_frequency: checkInFrequency || "sometimes",
+        forgetfulness_frequency: forgetfulnessFrequency || "prefer_not_to_say",
+        supporter_invite_preference: supporterInvitePreference(privacyChoice || "decide_later"),
         consent_accepted: consent,
         emergency_contact_name: ecName || null,
         emergency_contact_phone: ecPhone || null,
@@ -48,22 +79,90 @@ export default function Onboarding() {
     {
       icon: Sparkles,
       color: "bg-sky-600",
-      title: "What would you like to use MemoryMate for?",
+      title: "What would you like MemoryMate to help you with?",
       body: "Choose what fits best. You can change this anytime in Settings.",
       content: (
-        <div className="mt-6 text-left max-h-[50vh] overflow-y-auto mm-scrollbar">
-          <PurposeSelector value={purpose} onChange={setPurpose} testIdPrefix="onboarding-purpose" />
+        <div className="mt-6 max-h-[50vh] overflow-y-auto mm-scrollbar">
+          <OnboardingOptionGroup
+            options={MAIN_GOAL_OPTIONS}
+            value={mainGoal}
+            onChange={setMainGoal}
+            testIdPrefix="onboarding-goal"
+          />
         </div>
       ),
-      canNext: () => !!purpose,
+      canNext: () => !!mainGoal,
+    },
+    {
+      icon: Users,
+      color: "bg-violet-600",
+      title: "Would you like to keep MemoryMate private, or invite someone you trust?",
+      body: "You can always change this later. Inviting someone is never required.",
+      content: (
+        <div className="mt-6">
+          <OnboardingOptionGroup
+            options={PRIVACY_OPTIONS}
+            value={privacyChoice}
+            onChange={setPrivacyChoice}
+            testIdPrefix="onboarding-privacy"
+          />
+        </div>
+      ),
+      canNext: () => !!privacyChoice,
     },
     {
       icon: Sparkles,
       color: "bg-emerald-600",
-      title: "Welcome to MemoryMate",
-      body: "MemoryMate helps you remember, organize, and share what matters — reminders, appointments, memory notes, and family support in one calm place.",
-      content: null,
-      canNext: () => true,
+      title: "A few gentle questions",
+      body: "This helps MemoryMate suggest a setup — not a diagnosis or score.",
+      content: (
+        <div className="mt-6 space-y-6 text-left">
+          <div>
+            <p className="font-medium text-stone-800 mb-2">How often do you want MemoryMate to check in?</p>
+            <OnboardingOptionGroup
+              options={FREQUENCY_OPTIONS}
+              value={checkInFrequency}
+              onChange={setCheckInFrequency}
+              testIdPrefix="onboarding-checkin"
+            />
+          </div>
+          <div>
+            <p className="font-medium text-stone-800 mb-2">
+              How often do you forget appointments, tasks, or what happened earlier?
+            </p>
+            <OnboardingOptionGroup
+              options={FORGET_OPTIONS}
+              value={forgetfulnessFrequency}
+              onChange={setForgetfulnessFrequency}
+              testIdPrefix="onboarding-forget"
+            />
+          </div>
+        </div>
+      ),
+      canNext: () => !!checkInFrequency && !!forgetfulnessFrequency,
+    },
+    {
+      icon: Sparkles,
+      color: "bg-amber-500",
+      title: "Recommended setup",
+      body: recommendationMessage(
+        recommendedMode,
+        privacyChoice,
+        checkInFrequency,
+        forgetfulnessFrequency,
+      ),
+      content: (
+        <div className="mt-6 max-h-[50vh] overflow-y-auto mm-scrollbar">
+          <p className="text-sm text-stone-600 mb-3 text-left">You can pick a different mode if you prefer.</p>
+          <OnboardingOptionGroup
+            options={MODE_OPTIONS}
+            value={selectedMode || recommendedMode}
+            onChange={setSelectedMode}
+            testIdPrefix="onboarding-mode"
+          />
+        </div>
+      ),
+      canNext: () => !!(selectedMode || recommendedMode),
     },
     {
       icon: ShieldCheck,
@@ -89,8 +188,8 @@ export default function Onboarding() {
     {
       icon: Phone,
       color: "bg-rose-600",
-      title: "Add a trusted contact",
-      body: "Someone you can reach quickly for day-to-day help. You can change this anytime in Settings.",
+      title: "Add a trusted contact (optional)",
+      body: "Someone you can reach quickly for day-to-day help. You can skip or add this later in Settings.",
       content: (
         <div className="mt-6 space-y-3 text-left">
           <Input placeholder="Contact name" value={ecName} onChange={(e) => setEcName(e.target.value)} className="h-12 rounded-xl" data-testid="onboarding-ec-name" />
@@ -104,6 +203,8 @@ export default function Onboarding() {
   const s = steps[step];
   const last = step === steps.length - 1;
   const canNext = s.canNext();
+  const showSupporterHint =
+    (selectedMode || recommendedMode) === "trusted_supporter" && user?.role === "caregiver";
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col" data-testid="onboarding-page">
@@ -117,6 +218,12 @@ export default function Onboarding() {
           <h1 className="font-heading text-3xl font-bold mt-7">{s.title}</h1>
           <p className="mt-3 text-lg text-stone-600 leading-relaxed">{s.body}</p>
           {s.content}
+
+          {showSupporterHint && step >= 3 && (
+            <p className="mt-4 text-sm text-stone-600 bg-violet-50 border border-violet-100 rounded-xl p-3 text-left">
+              After setup, open <strong>Family circle</strong> to invite a trusted supporter. Sharing is always your choice.
+            </p>
+          )}
 
           <div className="mt-10 flex items-center gap-3">
             {step > 0 && (

@@ -10,6 +10,16 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
 from db import db
+from onboarding_fields import (
+    MEMORYMATE_MODES,
+    MAIN_GOALS,
+    PRIVACY_CHOICES,
+    CHECK_IN_FREQUENCIES,
+    FORGETFULNESS_FREQUENCIES,
+    SUPPORTER_INVITE_PREFERENCES,
+    purpose_for_mode,
+    default_supporter_invite_preference,
+)
 
 JWT_ALGORITHM = "HS256"
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -230,6 +240,20 @@ class OnboardingRequest(BaseModel):
     emergency_contact_phone: Optional[str] = None
     onboarding_completed: Optional[bool] = None
     memorymate_purpose: Optional[str] = None
+    memorymate_mode: Optional[str] = None
+    main_goal: Optional[str] = None
+    privacy_choice: Optional[str] = None
+    check_in_frequency: Optional[str] = None
+    forgetfulness_frequency: Optional[str] = None
+    supporter_invite_preference: Optional[str] = None
+
+
+def _validate_onboarding_field(name: str, value: str, allowed: frozenset) -> None:
+    if value not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {name}. Choose one of: {', '.join(sorted(allowed))}.",
+        )
 
 
 @router.patch("/onboarding")
@@ -239,7 +263,36 @@ async def update_onboarding(body: OnboardingRequest, user: dict = Depends(get_cu
             status_code=400,
             detail=f"Invalid purpose. Choose one of: {', '.join(sorted(MEMORYMATE_PURPOSES))}.",
         )
+    if body.memorymate_mode is not None:
+        _validate_onboarding_field("memorymate_mode", body.memorymate_mode, MEMORYMATE_MODES)
+    if body.main_goal is not None:
+        _validate_onboarding_field("main_goal", body.main_goal, MAIN_GOALS)
+    if body.privacy_choice is not None:
+        _validate_onboarding_field("privacy_choice", body.privacy_choice, PRIVACY_CHOICES)
+    if body.check_in_frequency is not None:
+        _validate_onboarding_field("check_in_frequency", body.check_in_frequency, CHECK_IN_FREQUENCIES)
+    if body.forgetfulness_frequency is not None:
+        _validate_onboarding_field("forgetfulness_frequency", body.forgetfulness_frequency, FORGETFULNESS_FREQUENCIES)
+    if body.supporter_invite_preference is not None:
+        _validate_onboarding_field(
+            "supporter_invite_preference", body.supporter_invite_preference, SUPPORTER_INVITE_PREFERENCES,
+        )
+
     update = {k: v for k, v in body.model_dump().items() if v is not None}
+
+    if body.memorymate_mode is not None and body.memorymate_purpose is None:
+        update["memorymate_purpose"] = purpose_for_mode(
+            body.memorymate_mode,
+            main_goal=body.main_goal or user.get("main_goal"),
+            role=user.get("role"),
+        )
+
+    if body.privacy_choice is not None and body.supporter_invite_preference is None:
+        update.setdefault(
+            "supporter_invite_preference",
+            default_supporter_invite_preference(body.privacy_choice),
+        )
+
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if update:
         await db.users.update_one({"id": user["id"]}, {"$set": update})
