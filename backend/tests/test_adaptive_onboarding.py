@@ -5,9 +5,9 @@ from pathlib import Path
 import requests
 
 try:
-    from onboarding_fields import purpose_for_mode, MEMORYMATE_MODES, MAIN_GOALS
+    from onboarding_fields import purpose_for_mode, MEMORYMATE_MODES, MAIN_GOALS, recommend_mode
 except ImportError:
-    from backend.onboarding_fields import purpose_for_mode, MEMORYMATE_MODES, MAIN_GOALS
+    from backend.onboarding_fields import purpose_for_mode, MEMORYMATE_MODES, MAIN_GOALS, recommend_mode
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "http://localhost:8000").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -175,3 +175,41 @@ class TestAdaptiveOnboardingCopy:
     def test_no_granola_in_onboarding(self):
         for path in ONBOARDING_UI_FILES:
             assert "granola" not in path.read_text(encoding="utf-8").lower()
+
+
+class TestOnboardingRecommendations:
+    """Smoke-path recommendation logic (mirrors frontend recommendMode)."""
+
+    def test_private_executive_path(self):
+        mode = recommend_mode(
+            "capture_meetings_ideas", "private", "rarely", "rarely",
+        )
+        assert mode == "private_executive"
+
+    def test_daily_memory_support_path(self):
+        mode = recommend_mode(
+            "extra_memory_support", "private", "often", "sometimes",
+        )
+        assert mode == "daily_memory_support"
+        mode2 = recommend_mode(
+            "extra_memory_support", "decide_later", "often", "often",
+        )
+        assert mode2 == "daily_memory_support"
+
+    def test_trusted_supporter_paths(self):
+        assert recommend_mode(
+            "help_someone", "private", "often", "often",
+        ) == "trusted_supporter"
+        assert recommend_mode(
+            "remember_tasks", "trusted_supporter", "often", "often",
+        ) == "trusted_supporter"
+
+    def test_decide_later_path(self):
+        assert recommend_mode(
+            "not_sure", "decide_later", "sometimes", "prefer_not_to_say",
+        ) == "decide_later"
+
+    def test_decide_later_productivity_low_support(self):
+        assert recommend_mode(
+            "capture_meetings_ideas", "decide_later", "rarely", "rarely",
+        ) == "decide_later"
