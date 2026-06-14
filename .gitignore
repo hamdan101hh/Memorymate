@@ -83,7 +83,13 @@ agenthub/agents/youtube/db
 backend/.venv/
 backend/uploads/
 
-# Local server logs
+# Local MongoDB dumps and exports (never commit)
+/backups/
+*.dump
+*.bson
+*.archive
+*.mongoexport.json
+
 *.log
 server.log
 
