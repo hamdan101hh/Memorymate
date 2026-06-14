@@ -239,6 +239,7 @@ Assign an **incident commander** (founder or designated engineer) for P0/P1.
 | [BROWSER_SMOKE_TEST_CHECKLIST.md](./BROWSER_SMOKE_TEST_CHECKLIST.md) | Manual QA pass |
 | [VOICE_TRANSCRIPTION_COST_GUARDRAILS.md](./VOICE_TRANSCRIPTION_COST_GUARDRAILS.md) | Voice/cloud STT caps and alerts |
 | [MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md](./MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md) | Paid service gates |
+| [PRODUCTION_ENV_AUDIT_CHECKLIST.md](./PRODUCTION_ENV_AUDIT_CHECKLIST.md) | Pre-deploy env go/no-go |
 
 ---
 
