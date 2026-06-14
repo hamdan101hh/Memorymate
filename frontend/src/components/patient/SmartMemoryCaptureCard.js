@@ -63,7 +63,13 @@ export default function SmartMemoryCaptureCard() {
         </span>
       </div>
 
-      {quietDay && active && (
+      {paused && active && (
+        <p className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2" data-testid="smart-capture-paused-notice">
+          Reminders paused. Nothing is recording or listening.
+        </p>
+      )}
+
+      {quietDay && active && !paused && (
         <p className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2" data-testid="quiet-day-notice">
           Quiet day mode is on. MemoryMate will keep check-ins minimal today.
         </p>

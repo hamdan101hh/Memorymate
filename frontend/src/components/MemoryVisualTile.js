@@ -47,10 +47,10 @@ export default function MemoryVisualTile({ memory, compact, previewable = false 
             {thumb}
           </button>
           <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-            <DialogContent className="max-w-lg p-3 sm:p-4" data-testid="timeline-photo-preview-dialog">
+            <DialogContent className="max-w-[min(100vw-2rem,32rem)] p-3 sm:p-4" data-testid="timeline-photo-preview-dialog">
               <AuthenticatedImage path={imagePath} alt="" className="w-full max-h-[70vh] object-contain rounded-lg mx-auto" />
               {attachCount > 1 && (
-                <p className="text-sm text-stone-500 text-center mt-2">{attachCount} photos attached</p>
+                <p className="text-sm text-stone-500 text-center mt-2" data-testid="timeline-photo-count-label">{attachCount} photos attached</p>
               )}
             </DialogContent>
           </Dialog>
