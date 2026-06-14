@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { EmptyState } from "../../components/common";
+import MemoryVisualTile from "../../components/MemoryVisualTile";
 import { Clock, Users, MapPin, Pill, CalendarClock, Bell, Mic, Loader2 } from "lucide-react";
 
 export default function Timeline() {
@@ -18,20 +19,27 @@ export default function Timeline() {
       ) : (
         <div className="space-y-4">
           {memories.map((m) => (
-            <div key={m.id} className="bg-white border border-stone-200 rounded-xl p-5" data-testid="timeline-card">
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading font-semibold text-lg">{m.title}</h3>
-                <span className="text-xs text-stone-400 flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {new Date(m.created_at).toLocaleString()}</span>
-              </div>
-              <span className="inline-block mt-1 text-xs bg-stone-100 text-stone-500 rounded-full px-2 py-0.5 capitalize">{m.timeline} · {m.source}</span>
-              <div className="mt-3 rounded-lg bg-sky-50 border border-sky-100 p-3 text-sm text-stone-700">{m.simple_summary}</div>
-              {m.transcript && <p className="mt-2 text-xs text-stone-400 italic">“{m.transcript}”</p>}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Tags icon={Bell} items={m.tasks_detected?.map((t) => t.title)} color="violet" />
-                <Tags icon={Users} items={m.people_mentioned?.map((p) => p.name)} color="rose" />
-                <Tags icon={MapPin} items={m.places_mentioned?.map((p) => p.name)} color="amber" />
-                <Tags icon={Pill} items={m.medication_detected?.map((x) => x.name)} color="emerald" />
-                <Tags icon={CalendarClock} items={m.appointment_detected?.map((a) => a.title)} color="sky" />
+            <div key={m.id} className="bg-white border border-stone-200 rounded-xl p-4 sm:p-5" data-testid="timeline-card">
+              <div className="flex gap-3 items-start">
+                <MemoryVisualTile memory={m} compact previewable />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-heading font-semibold text-lg leading-snug">{m.title}</h3>
+                    <span className="text-xs text-stone-400 flex items-center gap-1 shrink-0">
+                      <Clock className="w-3.5 h-3.5" /> {new Date(m.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <span className="inline-block mt-1 text-xs bg-stone-100 text-stone-500 rounded-full px-2 py-0.5 capitalize">{m.timeline} · {m.source}</span>
+                  <div className="mt-3 rounded-lg bg-sky-50 border border-sky-100 p-3 text-sm text-stone-700">{m.simple_summary}</div>
+                  {m.transcript && <p className="mt-2 text-xs text-stone-400 italic">“{m.transcript}”</p>}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Tags icon={Bell} items={m.tasks_detected?.map((t) => t.title)} color="violet" />
+                    <Tags icon={Users} items={m.people_mentioned?.map((p) => p.name)} color="rose" />
+                    <Tags icon={MapPin} items={m.places_mentioned?.map((p) => p.name)} color="amber" />
+                    <Tags icon={Pill} items={m.medication_detected?.map((x) => x.name)} color="emerald" />
+                    <Tags icon={CalendarClock} items={m.appointment_detected?.map((a) => a.title)} color="sky" />
+                  </div>
+                </div>
               </div>
             </div>
           ))}
