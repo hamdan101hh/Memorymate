@@ -9,6 +9,7 @@ import {
   Sunrise, Sun, Moon, Users, MapPin, Bell, Pill, StickyNote, CalendarClock, Mic, Loader2, RefreshCw, BookHeart,
 } from "lucide-react";
 import { toast } from "sonner";
+import MemoryVisualTile from "../../components/MemoryVisualTile";
 
 const BUCKETS = [
   { key: "morning", label: "Morning", icon: Sunrise, color: "text-amber-500" },
@@ -87,15 +88,18 @@ export default function TodaySummary() {
               <div className={`flex items-center gap-2 font-heading text-xl font-semibold ${b.color}`}><b.icon className="w-6 h-6" /> {b.label}</div>
               <div className="mt-4 space-y-3">
                 {items.map((m) => (
-                  <div key={m.id} className="text-lg text-stone-700 leading-relaxed border-l-4 border-stone-100 pl-4">
-                    <p className="font-semibold text-stone-900">{m.title}</p>
-                    <p>{m.simple_summary}</p>
-                    {m.location?.lat != null && (
-                      <a href={googleMapsSearchUrl(`${m.location.lat},${m.location.lng}`)} target="_blank" rel="noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-sm text-sky-700" data-testid="memory-location-link">
-                        <MapPin className="w-4 h-4" /> View location
-                      </a>
-                    )}
+                  <div key={m.id} className="flex gap-3 items-start text-lg text-stone-700 leading-relaxed border-l-4 border-stone-100 pl-4" data-testid="today-timeline-item">
+                    <MemoryVisualTile memory={m} compact previewable />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-stone-900">{m.title}</p>
+                      <p>{m.simple_summary}</p>
+                      {m.location?.lat != null && (
+                        <a href={googleMapsSearchUrl(`${m.location.lat},${m.location.lng}`)} target="_blank" rel="noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-sm text-sky-700" data-testid="memory-location-link">
+                          <MapPin className="w-4 h-4" /> View location
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
