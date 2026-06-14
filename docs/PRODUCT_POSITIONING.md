@@ -53,7 +53,16 @@ It can be used by **normal people**, **busy professionals**, **families**, **car
 
 ## Onboarding purpose values
 
-Stored on user as `memorymate_purpose`:
+Stored on user as `memorymate_purpose` (current MVP). **Next stage:** adaptive onboarding with four paths — see `docs/NEXT_PRODUCT_STAGE_PLAN.md`:
+
+| Planned mode | Maps to / replaces |
+|--------------|-------------------|
+| Private Executive Mode | `self`, `busy_schedule` |
+| Daily Memory Support Mode | `extra_support` |
+| Trusted Supporter Mode | `family_support`, `caregiver` (UI: trusted supporter) |
+| Decide Later | `unsure` |
+
+Current API values (backward compatible):
 
 | Value | Meaning |
 |-------|---------|
@@ -61,8 +70,12 @@ Stored on user as `memorymate_purpose`:
 | `busy_schedule` | Meetings, tasks, priorities |
 | `family_support` | Help a family member |
 | `extra_support` | Extra day-to-day memory help |
-| `caregiver` | Coordinate as caregiver/supporter |
+| `caregiver` | Coordinate as supporter (UI: trusted supporter) |
 | `unsure` | Start simple, customize later |
+
+## Future capture naming
+
+Do not market “24/7 listening.” Next opt-in session mode: **Focus Capture** or **Conversation Memory Mode** — requirements in `docs/NEXT_PRODUCT_STAGE_PLAN.md`. Granola and similar tools: optional meeting-notes connector research only — not the core listening engine.
 
 ## Pricing / cost principle
 

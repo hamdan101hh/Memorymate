@@ -175,6 +175,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - App Store / legal review if native mobile wrapper ships
 - WhatsApp Business API production onboarding (not started)
 - WHOOP connector implementation (not started)
+- **Next product stage:** adaptive onboarding + Focus Capture spec — `docs/NEXT_PRODUCT_STAGE_PLAN.md`
 
 ---
 
@@ -185,6 +186,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` — restore drill checklist and sign-off
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — production error monitoring and incident response
 - `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production environment go/no-go audit
+- `docs/NEXT_PRODUCT_STAGE_PLAN.md` — next stage: Focus Capture, adaptive onboarding, no 24/7
 - `docs/MEMORYMATE_BUILD_STACK_CHECKLIST.md` — stack layers and env index
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`
 - `docs/VOICE_TRANSCRIPTION_COST_GUARDRAILS.md`
