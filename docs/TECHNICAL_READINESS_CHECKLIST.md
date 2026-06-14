@@ -57,7 +57,7 @@
 |-------|----------------|--------------|------------------|
 | **Frontend** | React (CRA), patient + caregiver + admin + public routes | `frontend/src/` | Build passes; demo mode off in prod URL |
 | **Backend API** | FastAPI, `server.py` routers | `backend/routes.py`, `capture.py`, etc. | Health check `/api/`; CORS locked to frontend origin |
-| **Database** | MongoDB via Motor | `backend/db.py` | Atlas M0 or managed cluster; backups + **restore drill** — see `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` |
+| **Database** | MongoDB via Motor | `backend/db.py` | Backups + **restore drill Pass** — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` |
 | **Auth** | JWT bearer, role-based | `backend/auth.py` | Strong `JWT_SECRET`; demo login disabled in prod |
 | **File / image storage** | Local `uploads/patient_images/` + Mongo metadata | `image_storage.py`, `image_routes.py` | Production object storage TODO |
 | **Notifications** | Web Push (VAPID), in-app | `notifications.py` | VAPID keys set or push gracefully disabled |
@@ -169,7 +169,8 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - Full manual browser smoke on staging (all roles, mobile widths)
 - Real deployment environment audit — **checklist:** `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md`
 - ~~Monitoring / alerting~~ — **plan added:** `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` (assign on-call before real users)
-- ~~MongoDB backup and restore runbook~~ — **added:** `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` (complete restore drill before launch)
+- ~~MongoDB backup and restore runbook~~ — **added:** `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md`
+- **Restore drill sign-off** — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (**launch blocker until Pass**)
 - HTTP rate limiting at API edge
 - App Store / legal review if native mobile wrapper ships
 - WhatsApp Business API production onboarding (not started)
@@ -180,7 +181,8 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 ## Related docs
 
 - `docs/DEPLOYMENT_READINESS_AUDIT.md` — pre-launch env, CORS, demo mode, Render/Vercel
-- `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — MongoDB backup, restore, and DR drill (launch blocker until tested)
+- `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — MongoDB backup, restore, and DR drill
+- `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` — restore drill checklist and sign-off
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — production error monitoring and incident response
 - `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production environment go/no-go audit
 - `docs/MEMORYMATE_BUILD_STACK_CHECKLIST.md` — stack layers and env index
