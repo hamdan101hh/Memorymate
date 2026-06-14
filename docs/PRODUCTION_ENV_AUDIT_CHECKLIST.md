@@ -264,7 +264,7 @@ cd frontend && CI=false yarn build
 # npx -p playwright@1.52.0 node tools/smoke-interactions.mjs
 ```
 
-Also complete: MongoDB restore drill per `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md`.
+Also complete: MongoDB restore drill per `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (sign-off §7 required before launch).
 
 ---
 
@@ -295,7 +295,7 @@ Detailed manual steps: `docs/BROWSER_SMOKE_TEST_CHECKLIST.md`.
 
 | Blocker | Severity |
 |---------|----------|
-| MongoDB backup/restore **not drilled** | High — see runbook |
+| MongoDB backup/restore **not drilled** | High — complete `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` §7 sign-off |
 | `ENABLE_DEMO=true` on production API | **Critical** |
 | `CORS_ORIGINS=*` or missing frontend origin | **High** |
 | Missing or weak `JWT_SECRET` | **Critical** |
@@ -315,7 +315,8 @@ Detailed manual steps: `docs/BROWSER_SMOKE_TEST_CHECKLIST.md`.
 |-----|------|
 | [DEPLOYMENT_READINESS_AUDIT.md](./DEPLOYMENT_READINESS_AUDIT.md) | Full pre-launch audit |
 | [PRODUCTION_ERROR_MONITORING_PLAN.md](./PRODUCTION_ERROR_MONITORING_PLAN.md) | Logs and incidents |
-| [MONGODB_BACKUP_RESTORE_RUNBOOK.md](./MONGODB_BACKUP_RESTORE_RUNBOOK.md) | Backup/restore drill |
+| [MONGODB_BACKUP_RESTORE_RUNBOOK.md](./MONGODB_BACKUP_RESTORE_RUNBOOK.md) | Backup options and DR |
+| [MONGODB_RESTORE_DRILL_CHECKLIST.md](./MONGODB_RESTORE_DRILL_CHECKLIST.md) | Restore drill steps and sign-off (**launch blocker**) |
 | [BROWSER_SMOKE_TEST_CHECKLIST.md](./BROWSER_SMOKE_TEST_CHECKLIST.md) | Manual QA |
 | [VOICE_TRANSCRIPTION_COST_GUARDRAILS.md](./VOICE_TRANSCRIPTION_COST_GUARDRAILS.md) | Voice env caps |
 | [MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md](./MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md) | Paid service gates |

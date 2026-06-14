@@ -2,7 +2,7 @@
 
 **Purpose:** Operational guide for backing up and restoring MemoryMate data **before real users** and on an ongoing basis.
 
-**Related:** `docs/DEPLOYMENT_READINESS_AUDIT.md`, `docs/TECHNICAL_READINESS_CHECKLIST.md`, `DEPLOY.md`
+**Related:** `docs/DEPLOYMENT_READINESS_AUDIT.md`, `docs/TECHNICAL_READINESS_CHECKLIST.md`, `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md`, `DEPLOY.md`
 
 **This document contains no secrets** — no connection strings, passwords, or backup file contents.
 
@@ -111,7 +111,7 @@ If restoring to staging:
 | Photo files on disk backed up separately if uploads enabled | | |
 | **No secrets stored in docs or git** | | |
 
-**Launch gate:** MongoDB backup/restore is a **launch blocker** until at least one successful restore drill is completed and recorded (date, owner, environment).
+**Launch gate:** MongoDB backup/restore is a **launch blocker** until at least one successful restore drill is completed and recorded (date, owner, environment). Use [MONGODB_RESTORE_DRILL_CHECKLIST.md](./MONGODB_RESTORE_DRILL_CHECKLIST.md) for the step-by-step drill and sign-off table.
 
 ---
 
@@ -272,6 +272,8 @@ Record results: date, environment, verifier, pass/fail notes.
 | `JWT_SECRET` | Users can still log in if unchanged; changing it invalidates existing sessions |
 | `ENABLE_DEMO` | Set appropriately per environment after restore |
 | `WHATSAPP_*` | Keep unset until WhatsApp is approved — prevents accidental sends |
+
+**Restore drill helper:** `python scripts/restore_drill_checklist.py` (env presence only — no DB connection).
 
 ---
 

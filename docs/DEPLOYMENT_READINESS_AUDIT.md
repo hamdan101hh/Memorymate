@@ -268,7 +268,7 @@ TODOs: backup/export/delete attachments; disaster recovery for user media.
 | AI / voice spend alerts | **Docs only** | GCP billing alert $1; review `ai_usage` collection |
 | MongoDB backups | **Runbook added** | Enable Atlas backup or manual `mongodump` process — see `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` |
 | Log secret leakage review | **Manual** | Audit log statements before launch |
-| Restore drill | **Required before real users** | Test restore to staging; record date and owner |
+| Restore drill | **Required before real users** | Complete drill + sign-off — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md`; helper: `python scripts/restore_drill_checklist.py` |
 
 ---
 
@@ -298,7 +298,7 @@ cd frontend && CI=false yarn build
 | `CORS_ORIGINS=*` in production | **High** | Exact Vercel origin |
 | Weak `ADMIN_PASSWORD` | **High** | Set strong `ADMIN_PASSWORD` |
 | Ephemeral image storage on Render | **High** | Limit photo marketing; plan object storage |
-| No DB backup runbook | **High** | Runbook added — **launch blocker until restore tested** — `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` |
+| No DB backup runbook | **High** | Runbook added — **launch blocker until restore drill Pass** — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` |
 | No error monitoring plan | **Medium** | Plan added — assign on-call + log cadence — `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
 | WhatsApp enabled without approval | **Critical** | Leave env unset |
 | GCP paid APIs beyond Calendar | **Critical** | Do not enable |
@@ -314,6 +314,7 @@ cd frontend && CI=false yarn build
 - `docs/BROWSER_SMOKE_TEST_CHECKLIST.md` — manual QA
 - `docs/CALENDAR_PRODUCTION_TODO.md` — Calendar hardening
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md` — cost gates
-- `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — backup/restore procedures (restore drill required before real users)
+- `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — backup/restore procedures
+- `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` — restore drill checklist and sign-off (**launch blocker until Pass**)
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — error monitoring and incident response (launch review item)
 - `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production env go/no-go checklist (run before deploy)
