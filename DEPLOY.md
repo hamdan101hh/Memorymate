@@ -50,6 +50,7 @@ Architecture: **Frontend** (React) on Vercel · **Backend** (FastAPI) on Render 
 - **Production demo mode (required):** set `ENABLE_DEMO=false` on Render before real users. When `true`, `/api/auth/demo-login` issues a session for any role **without a password** and seeds demo accounts. Local dev keeps `ENABLE_DEMO=true` in `backend/.env`.
 - Set `CORS_ORIGINS` to your exact Vercel URL (not `*`).
 - Set a strong `ADMIN_PASSWORD` (do not use the example default).
+- **Photo uploads:** production defaults block uploads to ephemeral Render disk (`IMAGE_STORAGE_MODE=disabled`). Users can still save notes without photos. Enable local disk only for short-lived testing via `ALLOW_LOCAL_IMAGE_STORAGE_IN_PRODUCTION=true` — not for real users. Do not add Google Cloud Storage without approval.
 - See `docs/DEPLOYMENT_READINESS_AUDIT.md` for the full pre-launch checklist.
 
 ---

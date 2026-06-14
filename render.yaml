@@ -77,6 +77,12 @@ services:
       # Encrypts Google OAuth tokens at rest. REQUIRED once the connector is enabled.
       - key: TOKEN_ENCRYPTION_KEY
         generateValue: true
+      # Photo uploads: blocked by default on Render (ephemeral disk). Do not enable for real users
+      # until private persistent storage is configured.
+      # - key: IMAGE_UPLOADS_ENABLED
+      #   value: "false"
+      # - key: IMAGE_STORAGE_MODE
+      #   value: disabled
 
 # Scheduled push (reminders, daily summary, privacy review, capture status).
 # A cron job calls POST /api/notifications/cron/run with the X-Cron-Secret header.

@@ -36,7 +36,23 @@ Photo Memory Attachments work across Record Memory, Smart Day drafts, Meeting/Co
 
 - Files: `backend/uploads/patient_images/{patient_id}/`
 - Metadata: MongoDB `memory_image_attachments`
-- Production: private object storage with signed URLs (TODO)
+- **Local dev:** uploads allowed (`IMAGE_STORAGE_MODE=local_dev`, default in dev)
+- **Production:** uploads blocked by default (`IMAGE_STORAGE_MODE=disabled`) because Render/local disk is ephemeral
+- **Future:** `private_object_storage` mode when persistent private storage ships (not S3/GCS without approval)
+
+### Environment variables
+
+| Variable | Dev default | Production default |
+|----------|-------------|-------------------|
+| `IMAGE_UPLOADS_ENABLED` | `true` | `false` |
+| `IMAGE_STORAGE_MODE` | `local_dev` | `disabled` |
+| `ALLOW_LOCAL_IMAGE_STORAGE_IN_PRODUCTION` | `false` | `false` |
+
+Production may only use ephemeral local disk when **both** `IMAGE_STORAGE_MODE=local_dev`, `IMAGE_UPLOADS_ENABLED=true`, and `ALLOW_LOCAL_IMAGE_STORAGE_IN_PRODUCTION=true` — for short-lived testing only, not real users.
+
+Blocked uploads return: *"Photo uploads are not enabled in this environment yet. You can still save the note without photos."*
+
+`GET /api/attachments/upload-config` reports availability for the UI.
 
 ## Future optional image AI
 

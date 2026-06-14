@@ -9,6 +9,9 @@ import PhotoAttachmentPreview from "./PhotoAttachmentPreview";
 const DEFAULT_MAX = 3;
 const DEFAULT_MAX_MB = 5;
 
+const UPLOAD_DISABLED_MESSAGE =
+  "Photo uploads are not enabled in this environment yet. You can still save your note without photos.";
+
 export default function PhotoAttachmentPicker({
   linkedType = "draft",
   linkedId = null,
@@ -26,8 +29,30 @@ export default function PhotoAttachmentPicker({
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [permission, setPermission] = useState(false);
+  const [uploadsAvailable, setUploadsAvailable] = useState(true);
+  const [uploadDisabledMessage, setUploadDisabledMessage] = useState(UPLOAD_DISABLED_MESSAGE);
   const cameraRef = useRef(null);
   const uploadRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get("/attachments/upload-config");
+        if (cancelled) return;
+        const available = data?.uploads_available !== false;
+        setUploadsAvailable(available);
+        if (!available && data?.message) {
+          setUploadDisabledMessage(data.message);
+        }
+      } catch {
+        /* keep default — upload attempt will surface backend guard */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -73,7 +98,14 @@ export default function PhotoAttachmentPicker({
       await refresh();
       toast.success("Photo attached (draft — saved when you confirm).");
     } catch (err) {
-      toast.error(formatApiError(err.response?.data?.detail) || "Could not attach photo.");
+      const status = err.response?.status;
+      const detail = formatApiError(err.response?.data?.detail);
+      if (status === 403 && detail) {
+        setUploadsAvailable(false);
+        setUploadDisabledMessage(detail);
+      } else {
+        toast.error(detail || "Could not attach photo.");
+      }
     } finally {
       setLoading(false);
     }
@@ -103,27 +135,41 @@ export default function PhotoAttachmentPicker({
   const atMax = images.length >= maxFiles;
   const cameraSupported = showCameraOption && typeof window !== "undefined" && "capture" in document.createElement("input");
 
-  if (compact && images.length === 0 && !permission) {
+  if (compact && uploadsAvailable && images.length === 0 && !permission) {
     return null;
   }
 
   return (
     <div className={`rounded-2xl bg-white border-2 border-stone-200 p-4 space-y-3 ${compact ? "border border-stone-200" : ""}`} data-testid="photo-attachment-picker">
+      {compact && !uploadsAvailable && (
+        <p className="text-sm text-stone-600 bg-stone-50 border border-stone-200 rounded-xl p-3" data-testid="photo-upload-disabled-notice">
+          {uploadDisabledMessage}
+        </p>
+      )}
       {!compact && (
         <div>
           <p className="font-semibold text-stone-800">{sectionTitle}</p>
           <p className="text-sm text-stone-500 mt-1">{sectionSubtitle}</p>
-          <p className="text-xs text-amber-800 mt-2">
-            Only add photos you have permission to save. Photos may contain private information.
-          </p>
+          {!uploadsAvailable ? (
+            <p className="text-sm text-stone-600 mt-2 bg-stone-50 border border-stone-200 rounded-xl p-3" data-testid="photo-upload-disabled-notice">
+              {uploadDisabledMessage}
+            </p>
+          ) : (
+            <p className="text-xs text-amber-800 mt-2">
+              Only add photos you have permission to save. Photos may contain private information.
+            </p>
+          )}
         </div>
       )}
 
-      <label className="flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
-        <Checkbox checked={permission} onCheckedChange={(v) => setPermission(!!v)} data-testid="photo-permission-checkbox" />
-        Save photo with memory
-      </label>
+      {uploadsAvailable && (
+        <label className="flex items-start gap-2 text-sm text-stone-700 cursor-pointer">
+          <Checkbox checked={permission} onCheckedChange={(v) => setPermission(!!v)} data-testid="photo-permission-checkbox" />
+          Save photo with memory
+        </label>
+      )}
 
+      {uploadsAvailable && (
       <div className="flex flex-wrap gap-2">
         {showCameraOption && (
           <input
@@ -160,10 +206,13 @@ export default function PhotoAttachmentPicker({
           Attach image
         </Button>
       </div>
-      {!cameraSupported && showCameraOption && (
+      )}
+      {uploadsAvailable && !cameraSupported && showCameraOption && (
         <p className="text-xs text-stone-500">Choose a photo from your device.</p>
       )}
+      {uploadsAvailable && (
       <p className="text-xs text-stone-400">Max {maxFiles} images, {maxSizeMB}MB each. Drafts expire after 24 hours if not saved.</p>
+      )}
 
       {loading && <Loader2 className="w-5 h-5 animate-spin text-sky-600" />}
 

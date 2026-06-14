@@ -10,11 +10,23 @@ from db import db
 from auth import get_current_user, _log
 from routes import patient_id_for, save_memory_for_patient
 import image_storage as imgs
+import image_upload_guard as img_guard
 import ai
 
 router = APIRouter(prefix="/api", tags=["attachments"])
 PROJ = {"_id": 0}
 NOW = lambda: __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+
+
+def _ensure_uploads_allowed():
+    if not img_guard.image_uploads_available():
+        raise HTTPException(status_code=403, detail=img_guard.UPLOAD_BLOCKED_MESSAGE)
+
+
+@router.get("/attachments/upload-config")
+async def get_upload_config(user: dict = Depends(get_current_user)):
+    """Whether photo uploads are allowed in this environment (auth-gated like other attachment routes)."""
+    return img_guard.upload_availability_payload()
 
 
 async def _serve_attachment(image_id: str, user: dict):
@@ -43,6 +55,7 @@ async def upload_draft_attachment(
     user: dict = Depends(get_current_user),
 ):
     """Upload a draft photo attachment (alias: POST /memories/draft-images)."""
+    _ensure_uploads_allowed()
     pid = await patient_id_for(user)
     if not permission_confirmed:
         raise HTTPException(status_code=400, detail="Please confirm you have permission to save this photo.")

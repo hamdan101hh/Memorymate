@@ -15,7 +15,7 @@ This audit complements `docs/TECHNICAL_READINESS_CHECKLIST.md`, `DEPLOY.md`, and
 | CORS / URLs | **Yellow** | Set `CORS_ORIGINS` to exact Vercel URL(s); no `*` in prod |
 | Google OAuth / Calendar | **Yellow** | OAuth client + redirect URIs; Calendar API only |
 | Render / Vercel | **Green** (documented) | Follow checklist below |
-| Image storage | **Red for scale** | Local disk on Render is not durable; plan private object storage |
+| Image storage | **Red for scale** | Local disk on Render is not durable; **uploads blocked by default in prod** until private storage |
 | Security gates | **Green** (code) | Verify env flags in prod dashboard |
 | Monitoring / backups | **Red** | No APM, backup runbook, or error reporting yet |
 
@@ -62,6 +62,7 @@ This audit complements `docs/TECHNICAL_READINESS_CHECKLIST.md`, `DEPLOY.md`, and
 |----------|-----------|----------------------------|
 | AI | `EMERGENT_LLM_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `TEXT_AI_PROVIDER`, caps | Rule-based fallbacks; no crashes |
 | Voice | `CLOUD_TRANSCRIPTION_ENABLED` | **`false`** — browser speech only |
+| Images | `IMAGE_UPLOADS_ENABLED`, `IMAGE_STORAGE_MODE` | **Prod defaults block uploads** on ephemeral disk |
 | Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Push disabled gracefully |
 | WhatsApp | `WHATSAPP_*` | Module inactive; **do not enable pre-launch** |
 | WHOOP | `REACT_APP_WHOOP_CONNECTOR_ENABLED` | UI hidden (`false`) |
@@ -76,6 +77,8 @@ This audit complements `docs/TECHNICAL_READINESS_CHECKLIST.md`, `DEPLOY.md`, and
 | `CORS_ORIGINS` | `*` if unset in `server.py` | Over-permissive cross-origin |
 | `TEXT_AI_PROVIDER` | `rule_based` | Safe without keys |
 | `PREMIUM_FALLBACK_ENABLED` | `false` | Extra AI spend |
+| `IMAGE_UPLOADS_ENABLED` | `true` in dev / **`false` in prod** | Uploads to ephemeral disk |
+| `IMAGE_STORAGE_MODE` | `local_dev` in dev / **`disabled` in prod** | Local disk unsafe on Render |
 
 ### Dangerous defaults to avoid in production
 
@@ -218,10 +221,13 @@ See also: `docs/CALENDAR_PRODUCTION_TODO.md`.
 | Topic | Current state | Production requirement |
 |-------|---------------|------------------------|
 | Storage | Local `backend/uploads/patient_images/` | **Not durable on Render** (ephemeral disk) |
+| Upload guard | `image_upload_guard.py` — **blocks prod uploads by default** | Keep until private object storage |
 | Access | Auth-gated `GET /api/attachments/{id}` | Keep — no public URLs |
 | Validation | MIME, size, count limits in `image_storage.py` | Already enforced |
 | Draft TTL | 24 hours for unattached drafts | Documented |
 | GCS / S3 | **Not implemented** | Required before scale; **do not enable GCS without approval** |
+
+**Production defaults:** `IMAGE_STORAGE_MODE=disabled`, `IMAGE_UPLOADS_ENABLED=false`. Users see a calm message and can still save notes without photos. Ephemeral local disk is only allowed when `ALLOW_LOCAL_IMAGE_STORAGE_IN_PRODUCTION=true` (testing only).
 
 **Launch blocker for photo-heavy production:** migrate to private object storage + signed/proxied URLs before marketing photo features broadly.
 
@@ -240,6 +246,7 @@ TODOs: backup/export/delete attachments; disaster recovery for user media.
 | Google tokens encrypted | Pass | Fernet in `crypto.py` |
 | Role guards | Pass | Tests + smoke scripts |
 | Upload validation | Pass | `image_storage.py`, tests |
+| Image upload prod guard | Pass | `image_upload_guard.py`, `POST /attachments/draft` 403 |
 | Voice guardrails | Pass | `voice_guardrails.py`, default on |
 | Cloud transcription off | Pass | `CLOUD_TRANSCRIPTION_ENABLED=false` default |
 | Smart Capture = reminders only | Pass | No mic/recording from reminders (interaction smoke) |
