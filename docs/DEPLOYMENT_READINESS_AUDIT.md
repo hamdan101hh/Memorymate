@@ -17,7 +17,7 @@ This audit complements `docs/TECHNICAL_READINESS_CHECKLIST.md`, `DEPLOY.md`, and
 | Render / Vercel | **Green** (documented) | Follow checklist below |
 | Image storage | **Red for scale** | Local disk on Render is not durable; **uploads blocked by default in prod** until private storage |
 | Security gates | **Green** (code) | Verify env flags in prod dashboard |
-| Monitoring / backups | **Red** | No APM; **backup runbook added** — restore drill still required |
+| Monitoring / backups | **Yellow** | Free-first plan added — **launch review** before real users; paid APM not required for controlled beta |
 
 **Safe to deploy a controlled beta** when: demo mode off, CORS locked, strong secrets, MongoDB Atlas, and founders accept local image storage limits until object storage ships.
 
@@ -261,8 +261,9 @@ TODOs: backup/export/delete attachments; disaster recovery for user media.
 
 | Capability | Status | TODO |
 |------------|--------|------|
-| Structured APM (Sentry, Datadog, etc.) | **Not configured** | Add error reporting before scale |
-| Uptime monitoring | **Manual** | Ping `/api/` externally |
+| Error monitoring plan | **Documented** | Free-first ops — see `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
+| Structured APM (Sentry, Datadog, etc.) | **Not configured** | Optional later — paid tools need approval |
+| Uptime monitoring | **Manual** | Ping `GET /api/`; optional UptimeRobot free tier |
 | AI / voice spend alerts | **Docs only** | GCP billing alert $1; review `ai_usage` collection |
 | MongoDB backups | **Runbook added** | Enable Atlas backup or manual `mongodump` process — see `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` |
 | Log secret leakage review | **Manual** | Audit log statements before launch |
@@ -297,7 +298,7 @@ cd frontend && CI=false yarn build
 | Weak `ADMIN_PASSWORD` | **High** | Set strong `ADMIN_PASSWORD` |
 | Ephemeral image storage on Render | **High** | Limit photo marketing; plan object storage |
 | No DB backup runbook | **High** | Runbook added — **launch blocker until restore tested** — `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` |
-| No error monitoring | **Medium** | Manual log review for beta |
+| No error monitoring plan | **Medium** | Plan added — assign on-call + log cadence — `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
 | WhatsApp enabled without approval | **Critical** | Leave env unset |
 | GCP paid APIs beyond Calendar | **Critical** | Do not enable |
 
@@ -313,3 +314,4 @@ cd frontend && CI=false yarn build
 - `docs/CALENDAR_PRODUCTION_TODO.md` — Calendar hardening
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md` — cost gates
 - `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — backup/restore procedures (restore drill required before real users)
+- `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — error monitoring and incident response (launch review item)
