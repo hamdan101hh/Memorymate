@@ -167,7 +167,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - Production image storage (private bucket + signed URLs)
 - Export / delete saved attachments and full account data policy
 - Full manual browser smoke on staging (all roles, mobile widths)
-- Real deployment environment audit (`ENABLE_DEMO`, CORS, secrets, `TOKEN_ENCRYPTION_KEY`)
+- Real deployment environment audit — see `docs/DEPLOYMENT_READINESS_AUDIT.md`
 - Monitoring / alerting (errors, AI spend, voice usage anomalies)
 - MongoDB backup and restore runbook
 - HTTP rate limiting at API edge
@@ -179,7 +179,8 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 
 ## Related docs
 
-- `docs/MEMORYMATE_BUILD_STACK_CHECKLIST.md` — stack layers and env vars
+- `docs/DEPLOYMENT_READINESS_AUDIT.md` — pre-launch env, CORS, demo mode, Render/Vercel
+- `docs/MEMORYMATE_BUILD_STACK_CHECKLIST.md` — stack layers and env index
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`
 - `docs/VOICE_TRANSCRIPTION_COST_GUARDRAILS.md`
 - `docs/PHOTO_MEMORY_ATTACHMENTS_PLAN.md`

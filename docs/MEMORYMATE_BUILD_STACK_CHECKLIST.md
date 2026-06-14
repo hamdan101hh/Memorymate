@@ -282,5 +282,6 @@ These are **not required** for MemoryMate’s current MVP and should stay disabl
 
 ## Cross-reference
 
+- Deployment readiness audit: `docs/DEPLOYMENT_READINESS_AUDIT.md`
 - Technical readiness scoring: `docs/TECHNICAL_READINESS_CHECKLIST.md`
 - Founder cost report: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`
