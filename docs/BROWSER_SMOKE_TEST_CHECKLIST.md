@@ -277,9 +277,17 @@ Branch `cursor/onboarding-smoke-polish` · `tools/smoke-onboarding.mjs` (Playwri
 | Demo user onboarding reset via API before each path | Pass |
 | Caregiver trusted-supporter hint (Family circle) | N/T (patient paths only in script) |
 
-**N/T this pass:** Full finish flow through consent + emergency contact; patient home copy per mode after complete onboarding.
+**N/T this pass:** None — full finish flow, patient home copy per mode, and supporter hints covered in `tools/smoke-onboarding.mjs` (2026-06-07 completion polish).
 
----
+| Finish flow check | Result |
+|-------------------|--------|
+| Consent → safety → emergency contact → finish | Pass |
+| `onboarding_completed` saved via API | Pass |
+| Mode + `memorymate_purpose` synced | Pass |
+| Patient home tagline per mode | Pass |
+| Trusted supporter invite note (never required) | Pass |
+| Decide later “no rush” note | Pass |
+| Caregiver Family circle hint on onboarding | Pass |
 
 ## Related docs
 
