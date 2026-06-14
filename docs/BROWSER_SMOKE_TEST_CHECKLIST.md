@@ -115,7 +115,7 @@ Login as Patient (Omar). Each route should load its page (no blank screen, no re
 | Capture now → `/patient/record` | Pass (route exists) |
 | Review → `/patient/capture/review` | Pass |
 | Focused capture / Capture settings links | Pass |
-| Pause / Skip / Turn off (API toast) | N/T (manual click) |
+| Pause / Skip / Turn off (API toast) | Pass (see Final interaction pass) |
 
 **Header:** Home (when not on home), Settings, Log out — Pass (visible on subpages).
 
@@ -191,8 +191,8 @@ Login as Admin.
 | Appointments | Pass (route sweep) |
 | Reminders | Pass |
 | Emergency page | Pass |
-| Photo thumbnails | N/T (manual tap to open modal) |
-| Modal/dialog behavior | N/T |
+| Photo thumbnails | Pass (tap opens preview; see Final interaction pass) |
+| Modal/dialog behavior | Pass (375px; see Final interaction pass) |
 | No horizontal scroll on main content | Pass (375px sweep) |
 
 ---
@@ -217,6 +217,33 @@ Login as Admin.
 
 ---
 
+## Final interaction smoke pass (2026-06-15)
+
+Branch `cursor/final-smoke-interaction-fixes` · Playwright `tools/smoke-interactions.mjs` at 375px width.
+
+| Area | Result | Notes |
+|------|--------|-------|
+| Smart Capture — Turn on 24h | Pass | Toast + active meta updates |
+| Smart Capture — Pause / Resume | Pass | Paused notice visible; no mic/recording |
+| Smart Capture — Skip next / Skip today | Pass | Toast feedback |
+| Smart Capture — Turn off | Pass | Returns to inactive state |
+| No mic / recording / transcription from reminders | Pass | `getUserMedia` not called during control clicks |
+| Photo thumbnail tap → preview | Pass | Today summary + timeline thumbs |
+| Preview close (Escape) | Pass | Dialog dismisses |
+| Multi-photo count badge | Pass | `+N` on thumbnails |
+| Image load failure fallback | Pass | `image-load-failed` placeholder (no crash) |
+| Record Memory photo picker at 375px | Pass | Picker visible; draft thumb opens preview modal |
+| Dialog above mobile drawer | Pass | Dialog z-index raised to `z-[100]` |
+
+**Bugs fixed in this pass:**
+
+- `AuthenticatedImage` shows loading pulse + broken-image fallback instead of empty space
+- `PhotoAttachmentPreview` tap-to-preview dialog for draft photos
+- `SmartMemoryCaptureCard` paused-state notice
+- Dialog overlay/content z-index for mobile over sidebar drawer
+
+---
+
 ## 9. Sign-off
 
 | Role | Name | Date | Pass? |
@@ -232,3 +259,4 @@ Login as Admin.
 - `docs/CLEANUP_NOTES.md` — cleaning duplicate test data
 - `docs/CALENDAR_PRODUCTION_TODO.md` — calendar-specific QA
 - `tools/smoke-browser-pass.mjs` — automated route sweep (requires Playwright)
+- `tools/smoke-interactions.mjs` — Smart Capture, photo modals, mobile dialogs
