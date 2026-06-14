@@ -35,9 +35,12 @@ export default function RecordMemory() {
   const [attachedImages, setAttachedImages] = useState([]);
   const [savePermission, setSavePermission] = useState(false);
   const [safetyLine, setSafetyLine] = useState(null);
+  const [pipelineConfig, setPipelineConfig] = useState(null);
   const mediaRef = useRef(null);
   const chunksRef = useRef([]);
   const speechRef = useRef(null);
+  const speechStartRef = useRef(null);
+  const recordStartRef = useRef(null);
 
   useEffect(() => {
     api.get("/capture/settings")
@@ -46,9 +49,30 @@ export default function RecordMemory() {
         setCaptureLanguage(data.capture_language || "auto");
       })
       .catch((e) => logError("Failed to load settings", e));
+    api.get("/ai/pipeline-config")
+      .then(({ data }) => setPipelineConfig(data))
+      .catch(() => setPipelineConfig({ cloud_transcription_enabled: false }));
   }, []);
 
+  const reportBrowserSpeechUsage = async (minutes) => {
+    if (!minutes || minutes <= 0) return;
+    try {
+      await api.post("/voice/usage", {
+        minutes,
+        mode: "browser_speech",
+        capture_type: "memory",
+      });
+    } catch {
+      /* optional telemetry */
+    }
+  };
+
   const stopSpeech = () => {
+    if (speechStartRef.current) {
+      const mins = (Date.now() - speechStartRef.current) / 60000;
+      reportBrowserSpeechUsage(mins);
+      speechStartRef.current = null;
+    }
     speechRef.current?.stop?.();
     speechRef.current = null;
   };
@@ -82,20 +106,30 @@ export default function RecordMemory() {
     };
     rec.onend = () => setRecording(false);
     speechRef.current = rec;
+    speechStartRef.current = Date.now();
     rec.start();
     setRecording(true);
     setSpeechUnsupported(false);
   };
+
+  const maxSingleMinutes = pipelineConfig?.max_single_recording_minutes ?? 10;
+  const cloudEnabled = pipelineConfig?.cloud_transcription_enabled === true;
 
   const startRecording = async () => {
     if (speechRecognitionSupported()) {
       startBrowserSpeech();
       return;
     }
+    if (!cloudEnabled) {
+      setSpeechUnsupported(true);
+      toast.message("Voice transcription is not available here. You can type your note instead.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
       chunksRef.current = [];
+      recordStartRef.current = Date.now();
       mr.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
@@ -104,8 +138,15 @@ export default function RecordMemory() {
       };
       mr.start();
       mediaRef.current = mr;
-      mediaRef.current._startTime = Date.now();
       setRecording(true);
+      const maxMs = maxSingleMinutes * 60 * 1000;
+      setTimeout(() => {
+        if (mediaRef.current?.state === "recording") {
+          toast.message(`Recording stopped — single memories are limited to ${maxSingleMinutes} minutes.`);
+          mediaRef.current.stop();
+          setRecording(false);
+        }
+      }, maxMs);
     } catch {
       toast.error("Microphone not available. You can type your memory instead.");
     }
@@ -128,6 +169,8 @@ export default function RecordMemory() {
       fd.append("cloud_confirmed", "true");
       if (mediaRef.current?._startTime) {
         fd.append("duration_seconds", String((Date.now() - mediaRef.current._startTime) / 1000));
+      } else if (recordStartRef.current) {
+        fd.append("duration_seconds", String((Date.now() - recordStartRef.current) / 1000));
       }
       const { data } = await api.post("/memories/transcribe", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setTranscript((prev) => (prev ? `${prev} ` : "") + data.transcript);
@@ -323,6 +366,9 @@ export default function RecordMemory() {
 
       {inputMode === "speak" && (
         <div className="rounded-3xl bg-white border-2 border-stone-200 p-8 text-center mb-6">
+          <p className="text-sm text-stone-500 mb-4" data-testid="voice-cost-note">
+            Voice is limited to help avoid unexpected costs. Browser speech is free when available.
+          </p>
           <button
             onClick={recording ? stopRecording : startRecording}
             disabled={transcribing}
@@ -335,6 +381,11 @@ export default function RecordMemory() {
             {transcribing ? "Transcribing…" : recording ? "Listening with permission — tap to stop" : "Tap to speak (microphone access is optional)"}
           </p>
           <p className="text-stone-500 mt-1 text-sm">Temporary audio is not saved unless turned into a memory.</p>
+          {!cloudEnabled && !speechRecognitionSupported() && (
+            <p className="text-sm text-amber-800 mt-2" data-testid="cloud-transcription-disabled-note">
+              Voice transcription is not available here. You can type your note instead.
+            </p>
+          )}
         </div>
       )}
 

@@ -13,21 +13,20 @@ from datetime import date
 from fastapi import HTTPException
 
 from db import db
+import voice_guardrails as vg
 
 # Per-patient daily ceiling. 0.50 leaves headroom over the ~0.35 target/user so a
 # normal heavy day is never blocked, while a runaway loop still can't drain the pool.
 DAILY_AI_COST_CAP_USD = float(os.environ.get("DAILY_AI_COST_CAP_USD", "0.50"))
 MAX_AI_ACTIONS_PER_DAY = int(os.environ.get("MAX_AI_ACTIONS_PER_DAY", "50"))
-DAILY_VOICE_MINUTES_CAP = float(os.environ.get("DAILY_VOICE_MINUTES_CAP", "5"))
-MAX_RECORDING_SECONDS = int(os.environ.get("MAX_RECORDING_SECONDS", "600"))
-MAX_MEETING_MINUTES = int(os.environ.get("MAX_MEETING_MINUTES", "60"))
+DAILY_VOICE_MINUTES_CAP = vg.DAILY_VOICE_MINUTES_CAP
+MAX_RECORDING_SECONDS = vg.MAX_RECORDING_SECONDS
+MAX_MEETING_MINUTES = vg.MAX_MEETING_MINUTES
 SMART_DAY_CLOUD_MINUTES_CAP = float(os.environ.get("SMART_DAY_CLOUD_MINUTES_CAP", "15"))
 MAX_SMART_DAY_SNIPPET_SECONDS = int(os.environ.get("MAX_SMART_DAY_SNIPPET_SECONDS", "60"))
 MAX_SMART_DAY_SESSION_HOURS = float(os.environ.get("MAX_SMART_DAY_SESSION_HOURS", "2"))
 
-VOICE_LIMIT_MESSAGE = (
-    "You've reached today's voice limit. You can still type your memory."
-)
+VOICE_LIMIT_MESSAGE = vg.VOICE_LIMIT_MESSAGE
 
 # Rough USD per 1M tokens (input, output). "cheap" = capture/summary tier.
 _PRICES = {
@@ -57,7 +56,7 @@ async def spent_today(pid: str) -> float:
 
 
 async def voice_minutes_today(pid: str) -> float:
-    return float((await _usage_doc(pid)).get("voice_minutes", 0.0))
+    return await vg.voice_minutes_recorded_today(pid)
 
 
 async def smart_day_cloud_minutes_today(pid: str) -> float:
@@ -114,24 +113,12 @@ async def record_smart_day_cloud_minutes(pid: str, minutes: float) -> None:
     )
 
 
-async def assert_voice_cap(pid: str, minutes: float) -> None:
-    if DAILY_VOICE_MINUTES_CAP <= 0:
-        return
-    if minutes > MAX_RECORDING_SECONDS / 60:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Recording is too long (max {MAX_RECORDING_SECONDS // 60} minutes per upload).",
-        )
-    if await voice_minutes_today(pid) + minutes > DAILY_VOICE_MINUTES_CAP:
-        raise HTTPException(status_code=429, detail=VOICE_LIMIT_MESSAGE)
+async def assert_voice_cap(pid: str, minutes: float, capture_type: str = "memory") -> None:
+    await vg.assert_can_record_voice(pid, minutes, capture_type=capture_type)
 
 
-async def assert_meeting_length(minutes: float) -> None:
-    if MAX_MEETING_MINUTES > 0 and minutes > MAX_MEETING_MINUTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Meeting capture is limited to {MAX_MEETING_MINUTES} minutes.",
-        )
+async def assert_meeting_length(pid: str, minutes: float) -> None:
+    await vg.assert_can_record_voice(pid, minutes, capture_type="meeting")
 
 
 async def record(pid: str, kind: str, in_chars: int = 0, out_chars: int = 0, tier: str = "cheap") -> None:
@@ -149,22 +136,15 @@ async def record(pid: str, kind: str, in_chars: int = 0, out_chars: int = 0, tie
 
 
 async def record_voice_minutes(pid: str, minutes: float) -> None:
-    day = await _today()
-    await db.ai_usage.update_one(
-        {"patient_id": pid, "day": day},
-        {
-            "$inc": {"voice_minutes": max(0.0, minutes)},
-            "$setOnInsert": {"patient_id": pid, "day": day, "est_cost": 0.0, "ops": 0},
-        },
-        upsert=True,
-    )
+    await vg.record_voice_usage(pid, minutes, "voice_minutes_recorded")
 
 
 async def usage_summary(pid: str) -> dict:
     """Today's usage for surfacing in the UI / admin."""
     doc = await _usage_doc(pid)
     spent = float(doc.get("est_cost", 0.0))
-    voice = float(doc.get("voice_minutes", 0.0))
+    voice = float(doc.get("voice_minutes_recorded", doc.get("voice_minutes", 0.0)))
+    voice_cap = await vg.daily_voice_cap_minutes(pid)
     ops = int(doc.get("ops", 0))
     return {
         "day": await _today(),
@@ -174,11 +154,20 @@ async def usage_summary(pid: str) -> dict:
         "remaining": round(max(0.0, DAILY_AI_COST_CAP_USD - spent), 4),
         "capped": spent >= DAILY_AI_COST_CAP_USD if DAILY_AI_COST_CAP_USD > 0 else False,
         "voice_minutes": round(voice, 2),
-        "voice_cap_minutes": DAILY_VOICE_MINUTES_CAP,
-        "voice_remaining_minutes": round(max(0.0, DAILY_VOICE_MINUTES_CAP - voice), 2),
+        "voice_minutes_recorded": round(voice, 2),
+        "voice_cap_minutes": voice_cap,
+        "voice_remaining_minutes": round(max(0.0, voice_cap - voice), 2),
+        "cloud_transcription_minutes": round(float(doc.get("cloud_transcription_minutes", 0.0)), 2),
+        "browser_speech_sessions": int(doc.get("browser_speech_sessions", 0)),
+        "cloud_transcription_attempts_blocked": int(doc.get("cloud_transcription_attempts_blocked", 0)),
+        "recording_limit_blocks": int(doc.get("recording_limit_blocks", 0)),
+        "voice_plan": await vg.patient_voice_plan(pid),
         "actions_cap": MAX_AI_ACTIONS_PER_DAY,
         "max_recording_seconds": MAX_RECORDING_SECONDS,
+        "max_single_recording_minutes": vg.MAX_SINGLE_RECORDING_MINUTES,
         "max_meeting_minutes": MAX_MEETING_MINUTES,
+        "max_meeting_capture_minutes": vg.MAX_MEETING_CAPTURE_MINUTES,
+        "cloud_transcription_enabled": vg.CLOUD_TRANSCRIPTION_ENABLED,
         "smart_day_cloud_minutes": round(float(doc.get("smart_day_cloud_minutes", 0.0)), 2),
         "smart_day_cloud_cap_minutes": SMART_DAY_CLOUD_MINUTES_CAP,
         "smart_day_cloud_remaining_minutes": round(

@@ -11,6 +11,7 @@ from db import db
 from auth import get_current_user, require_role, _log
 import ai
 import ai_pipeline
+import voice_guardrails as vg
 import usage
 import appointment_dashboard as apdash
 import appointment_ai
@@ -1286,8 +1287,33 @@ async def chat_save_reminder(body: ChatReminderBody, user: dict = Depends(get_cu
 @router.get("/ai/pipeline-config")
 async def ai_pipeline_config(user: dict = Depends(get_current_user)):
     """Public pipeline flags for frontend — no secrets."""
-    await patient_id_for(user)
-    return ai_pipeline.public_config()
+    pid = await patient_id_for(user)
+    cfg = ai_pipeline.public_config()
+    cfg["daily_voice_cap_minutes"] = await vg.daily_voice_cap_minutes(pid)
+    return cfg
+
+
+class VoiceUsageBody(BaseModel):
+    minutes: float = 0
+    mode: str = "browser_speech"
+    capture_type: str = "memory"
+
+
+@router.post("/voice/usage")
+async def post_voice_usage(body: VoiceUsageBody, user: dict = Depends(get_current_user)):
+    """Record browser speech session or limit-block counters (no cloud STT)."""
+    pid = await patient_id_for(user)
+    if body.capture_type == "reminder":
+        raise HTTPException(status_code=403, detail=vg.REMINDER_NO_VOICE)
+    if body.mode == "recording_limit_block":
+        await vg.record_voice_usage(pid, 0, "recording_limit_block")
+        return {"ok": True}
+    ok, msg = await vg.can_record_voice(pid, body.minutes, body.capture_type)
+    if not ok:
+        await vg.record_voice_usage(pid, 0, "recording_limit_block")
+        raise HTTPException(status_code=429 if msg == vg.VOICE_LIMIT_MESSAGE else 400, detail=msg)
+    await vg.record_voice_usage(pid, body.minutes, body.mode if body.mode in vg.USAGE_MODES else "browser_speech")
+    return {"ok": True}
 
 
 # ---------------- AI usage ----------------
