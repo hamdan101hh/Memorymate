@@ -167,7 +167,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - Production image storage (private bucket + signed URLs)
 - Export / delete saved attachments and full account data policy
 - Full manual browser smoke on staging (all roles, mobile widths)
-- Real deployment environment audit — see `docs/DEPLOYMENT_READINESS_AUDIT.md`
+- Real deployment environment audit — **checklist:** `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md`
 - ~~Monitoring / alerting~~ — **plan added:** `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` (assign on-call before real users)
 - ~~MongoDB backup and restore runbook~~ — **added:** `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` (complete restore drill before launch)
 - HTTP rate limiting at API edge
@@ -182,6 +182,7 @@ See also: `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`, `docs/VOICE_TRANS
 - `docs/DEPLOYMENT_READINESS_AUDIT.md` — pre-launch env, CORS, demo mode, Render/Vercel
 - `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — MongoDB backup, restore, and DR drill (launch blocker until tested)
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — production error monitoring and incident response
+- `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production environment go/no-go audit
 - `docs/MEMORYMATE_BUILD_STACK_CHECKLIST.md` — stack layers and env index
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md`
 - `docs/VOICE_TRANSCRIPTION_COST_GUARDRAILS.md`

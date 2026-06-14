@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-15 · **Branch baseline:** `main` at `2b68a2b` · **Scope:** Pre-launch documentation and config review — **no secrets, no paid service enablement.**
 
-This audit complements `docs/TECHNICAL_READINESS_CHECKLIST.md`, `DEPLOY.md`, and `render.yaml`. Re-run before every production cut.
+This audit complements `docs/TECHNICAL_READINESS_CHECKLIST.md`, `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md`, `DEPLOY.md`, and `render.yaml`. Re-run before every production cut.
 
 ---
 
@@ -262,6 +262,7 @@ TODOs: backup/export/delete attachments; disaster recovery for user media.
 | Capability | Status | TODO |
 |------------|--------|------|
 | Error monitoring plan | **Documented** | Free-first ops — see `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
+| Production env audit checklist | **Documented** | Go/no-go — `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` |
 | Structured APM (Sentry, Datadog, etc.) | **Not configured** | Optional later — paid tools need approval |
 | Uptime monitoring | **Manual** | Ping `GET /api/`; optional UptimeRobot free tier |
 | AI / voice spend alerts | **Docs only** | GCP billing alert $1; review `ai_usage` collection |
@@ -315,3 +316,4 @@ cd frontend && CI=false yarn build
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md` — cost gates
 - `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — backup/restore procedures (restore drill required before real users)
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — error monitoring and incident response (launch review item)
+- `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production env go/no-go checklist (run before deploy)
