@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import DashboardShell from "../../components/DashboardShell";
 import { LayoutDashboard, Users, Database, ScrollText } from "lucide-react";
 
@@ -10,5 +10,6 @@ const ITEMS = [
 ];
 
 export default function AdminLayout() {
-  return <DashboardShell items={ITEMS}><Outlet /></DashboardShell>;
+  const { pathname } = useLocation();
+  return <DashboardShell items={ITEMS}><Outlet key={pathname} /></DashboardShell>;
 }

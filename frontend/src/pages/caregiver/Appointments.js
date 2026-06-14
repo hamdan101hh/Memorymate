@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api, { formatApiError } from "../../lib/api";
 import { EmptyState } from "../../components/common";
 import { Button } from "../../components/ui/button";
@@ -63,6 +64,8 @@ const FILTERS = [
   { id: "past", label: "Past" },
   { id: "archived", label: "Archived" },
 ];
+
+const VALID_FILTER_IDS = new Set(FILTERS.map((f) => f.id));
 
 function fmtWhen(a) {
   const parts = [a.date, a.time].filter(Boolean);
@@ -147,13 +150,22 @@ function ApptCard({ item, onComplete, onArchive, onEdit, onAddGoogle, onKeepDupl
 }
 
 export default function Appointments() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterParam = searchParams.get("filter");
+  const filter = VALID_FILTER_IDS.has(filterParam) ? filterParam : "all";
+  const setFilter = (id) => {
+    const next = new URLSearchParams(searchParams);
+    if (id === "all") next.delete("filter");
+    else next.set("filter", id);
+    setSearchParams(next, { replace: true });
+  };
+
   const [dashboard, setDashboard] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState("");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [openGroups, setOpenGroups] = useState(() =>
@@ -172,6 +184,12 @@ export default function Appointments() {
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (filter === "duplicates") {
+      setOpenGroups((s) => ({ ...s, duplicates: true }));
+    }
+  }, [filter]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
