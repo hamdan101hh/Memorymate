@@ -33,34 +33,38 @@ class TestCloudTranscription:
     def test_disabled_raises_403(self):
         import ai_pipeline
         with patch.object(ai_pipeline, "CLOUD_TRANSCRIPTION_ENABLED", False):
-            with pytest.raises(HTTPException) as exc:
-                asyncio.run(ai_pipeline.transcribe_audio_cost_safe(
-                    "pid", b"audio", "a.webm", user_confirmed_cloud=True,
-                ))
-            assert exc.value.status_code == 403
+            with patch.object(ai_pipeline.vg, "record_voice_usage", new_callable=AsyncMock):
+                with pytest.raises(HTTPException) as exc:
+                    asyncio.run(ai_pipeline.transcribe_audio_cost_safe(
+                        "pid", b"audio", "a.webm", user_confirmed_cloud=True, duration_seconds=5,
+                    ))
+                assert exc.value.status_code == 403
+                assert "disabled" in exc.value.detail.lower()
 
     def test_requires_confirmation(self):
         import ai_pipeline
         with patch.object(ai_pipeline, "CLOUD_TRANSCRIPTION_ENABLED", True):
-            with pytest.raises(HTTPException) as exc:
-                asyncio.run(ai_pipeline.transcribe_audio_cost_safe(
-                    "pid", b"12345", "a.webm", user_confirmed_cloud=False,
-                ))
-            assert exc.value.status_code == 400
+            with patch.object(ai_pipeline.vg, "CLOUD_TRANSCRIPTION_ENABLED", True):
+                with pytest.raises(HTTPException) as exc:
+                    asyncio.run(ai_pipeline.transcribe_audio_cost_safe(
+                        "pid", b"12345", "a.webm", user_confirmed_cloud=False, duration_seconds=5,
+                    ))
+                assert exc.value.status_code == 400
 
     def test_single_stt_provider(self):
         import ai_pipeline
         with patch.object(ai_pipeline, "CLOUD_TRANSCRIPTION_ENABLED", True):
-            with patch("ai.transcribe_audio", new_callable=AsyncMock, return_value="hello"):
-                with patch("usage.assert_voice_cap", new_callable=AsyncMock):
-                    with patch("usage.assert_within_cap", new_callable=AsyncMock):
-                        with patch("usage.assert_action_cap", new_callable=AsyncMock):
-                            with patch("usage.record", new_callable=AsyncMock):
-                                with patch("usage.record_voice_minutes", new_callable=AsyncMock):
-                                    out = asyncio.run(ai_pipeline.transcribe_audio_cost_safe(
-                                        "pid", b"12345", "a.webm",
-                                        user_confirmed_cloud=True, duration_seconds=30,
-                                    ))
+            with patch.object(ai_pipeline.vg, "CLOUD_TRANSCRIPTION_ENABLED", True):
+                with patch("ai.transcribe_audio", new_callable=AsyncMock, return_value="hello"):
+                    with patch.object(ai_pipeline.vg, "assert_can_use_cloud_transcription", new_callable=AsyncMock):
+                        with patch("usage.assert_within_cap", new_callable=AsyncMock):
+                            with patch("usage.assert_action_cap", new_callable=AsyncMock):
+                                with patch("usage.record", new_callable=AsyncMock):
+                                    with patch.object(ai_pipeline.vg, "record_voice_usage", new_callable=AsyncMock):
+                                        out = asyncio.run(ai_pipeline.transcribe_audio_cost_safe(
+                                            "pid", b"12345", "a.webm",
+                                            user_confirmed_cloud=True, duration_seconds=30,
+                                        ))
         assert out["transcript"] == "hello"
         assert out["providers_used"] == 1
 
@@ -127,4 +131,4 @@ class TestSafetyConstraints:
 
     def test_voice_cap_message(self):
         import usage
-        assert "type your memory" in usage.VOICE_LIMIT_MESSAGE.lower()
+        assert "type the note" in usage.VOICE_LIMIT_MESSAGE.lower()

@@ -17,9 +17,10 @@ from fastapi import HTTPException
 
 import ai
 import usage
+import voice_guardrails as vg
 
 # ---- env flags (safe defaults: cloud off, premium off) ----
-CLOUD_TRANSCRIPTION_ENABLED = os.environ.get("CLOUD_TRANSCRIPTION_ENABLED", "false").lower() == "true"
+CLOUD_TRANSCRIPTION_ENABLED = vg.CLOUD_TRANSCRIPTION_ENABLED
 TEXT_AI_PROVIDER = os.environ.get("TEXT_AI_PROVIDER", "rule_based").strip().lower()
 CHEAP_TEXT_AI_PROVIDER = os.environ.get("CHEAP_TEXT_AI_PROVIDER", "deepseek").strip()
 PREMIUM_TEXT_AI_PROVIDER = os.environ.get("PREMIUM_TEXT_AI_PROVIDER", "gemini_or_openai").strip()
@@ -32,10 +33,10 @@ _MESSY_MARKERS = ("???", "[inaudible", "unclear", "…", "...")
 
 def public_config() -> dict:
     """Safe config for frontend — no secrets."""
+    base = vg.public_config()
     return {
         "pipeline_version": 1,
-        "browser_speech_first": True,
-        "cloud_transcription_enabled": CLOUD_TRANSCRIPTION_ENABLED,
+        **base,
         "text_ai_provider": TEXT_AI_PROVIDER,
         "cheap_text_ai_provider": CHEAP_TEXT_AI_PROVIDER,
         "premium_text_ai_provider": PREMIUM_TEXT_AI_PROVIDER,
@@ -72,11 +73,11 @@ def should_use_premium_fallback(confidence: str) -> bool:
     )
 
 
-def _estimate_minutes(duration_seconds: Optional[float], audio_bytes: int) -> float:
+def _estimate_minutes(duration_seconds: Optional[float], byte_count: int) -> float:
     if duration_seconds is not None and duration_seconds > 0:
         return duration_seconds / 60.0
     # Rough fallback: ~32 KB/s for compressed webm ≈ 0.5 min per MB
-    return max(0.1, len(audio_bytes) / (32 * 1024 * 60))
+    return max(0.1, max(0, byte_count) / (32 * 1024 * 60))
 
 
 def _rule_clean(text: str) -> str:
@@ -130,24 +131,22 @@ async def transcribe_audio_cost_safe(
     duration_seconds: Optional[float] = None,
 ) -> dict:
     """Cloud STT — disabled by default; requires confirmation; single provider; capped."""
-    if not CLOUD_TRANSCRIPTION_ENABLED:
-        raise HTTPException(
-            status_code=403,
-            detail="Cloud transcription is disabled. Use browser speech or type your memory.",
-        )
-    if not user_confirmed_cloud:
-        raise HTTPException(
-            status_code=400,
-            detail="Cloud transcription requires your confirmation before upload.",
-        )
     minutes = _estimate_minutes(duration_seconds, len(audio_bytes))
-    await usage.assert_voice_cap(pid, minutes)
+    try:
+        await vg.assert_can_use_cloud_transcription(
+            pid, minutes, user_confirmed=user_confirmed_cloud,
+        )
+    except HTTPException:
+        if not CLOUD_TRANSCRIPTION_ENABLED:
+            await vg.record_voice_usage(pid, 0, "cloud_transcription_blocked")
+        raise
+
     await usage.assert_within_cap(pid)
     await usage.assert_action_cap(pid)
 
     # Single STT provider — never fan-out to multiple STT backends.
     text = await ai.transcribe_audio(audio_bytes, filename)
-    await usage.record_voice_minutes(pid, minutes)
+    await vg.record_voice_usage(pid, minutes, "cloud_transcription")
     await usage.record(pid, "cloud_transcribe", in_chars=len(audio_bytes), out_chars=len(text or ""), tier="cheap")
     return {
         "transcript": (text or "").strip(),
@@ -260,7 +259,7 @@ async def process_meeting_transcript(
 ) -> dict:
     """Meeting capture cleanup — browser transcript first; cheap filter + summary."""
     if meeting_minutes is not None:
-        await usage.assert_meeting_length(meeting_minutes)
+        await usage.assert_meeting_length(pid, meeting_minutes)
     await usage.assert_within_cap(pid)
     await usage.assert_action_cap(pid)
 

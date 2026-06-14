@@ -116,6 +116,9 @@ function CaptureInputs({ isMeeting, processing, onAddNote, onProcess, onAppend, 
 
   return (
     <div className="space-y-4 mb-6">
+      <p className="text-sm text-stone-500" data-testid="capture-voice-cost-note">
+        Voice is limited to help avoid unexpected costs. Browser speech is used first when available.
+      </p>
       <div className="flex gap-2">
         <Input ref={noteRef} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a manual note during the session…" className="h-11 rounded-xl" data-testid="capture-note-input" />
         <Button onClick={submitNote} variant="outline" className="rounded-xl h-11">Add</Button>
