@@ -75,7 +75,7 @@ def main() -> int:
         "3. Do NOT paste MongoDB URIs into docs, chat, or git.",
         "4. Restore to STAGING or DEV first — never production during a drill.",
         "5. On staging: disable prod notifications, keep WHATSAPP_* unset.",
-        "6. Run mongorestore against STAGING_MONGO_URL only.",
+        "6. Run mongorestore against STAGING_MONGO_URL only (parent dump folder — see run_restore_drill.py).",
         "7. Verify API health, login, dashboards, memories/reminders/appointments.",
         "8. Run pytest, frontend build, and optional smoke scripts.",
         "9. Complete sign-off in docs/MONGODB_RESTORE_DRILL_CHECKLIST.md §7.",
