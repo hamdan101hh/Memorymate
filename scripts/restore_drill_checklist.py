@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ENV = ROOT / "backend" / ".env"
+STAGING_ENV = ROOT / "backend" / ".env.staging"
 
 # MemoryMate uses MONGO_URL (not MONGODB_URI) — check both for operator convenience.
 REQUIRED_VARS = [
@@ -30,18 +31,19 @@ STAGING_DRILL_VARS = [
 
 
 def _load_backend_dotenv() -> None:
-    """Load backend/.env into os.environ without printing values."""
-    if not BACKEND_ENV.is_file():
-        return
-    for line in BACKEND_ENV.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+    """Load backend/.env and optional backend/.env.staging (gitignored) without printing values."""
+    for path in (BACKEND_ENV, STAGING_ENV):
+        if not path.is_file():
             continue
-        key, _, val = line.partition("=")
-        key = key.strip()
-        val = val.strip().strip('"').strip("'")
-        if key and val and key not in os.environ:
-            os.environ[key] = val
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and val and key not in os.environ:
+                os.environ[key] = val
 
 
 def _is_set(name: str) -> bool:

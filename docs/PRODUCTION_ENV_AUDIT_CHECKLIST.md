@@ -266,13 +266,13 @@ cd frontend && CI=false yarn build
 
 Also complete: MongoDB restore drill per `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (sign-off §7 required before launch).
 
-| Restore drill | Status (2026-06-07) |
+| Restore drill | Status (2026-06-15) |
 |---------------|---------------------|
-| Overall | **BLOCKED** — `STAGING_MONGO_URL` not set (need separate staging/dev MongoDB URI) |
-| Backup / restore executed | No |
+| Overall | **Partial Pass** — backup + restore to staging OK; local API verification OK after certifi TLS fix |
+| Render staging row-count check | **Pending** — required for full §7 Pass |
 | Production overwritten | No |
 
-Set `STAGING_MONGO_URL` to a **non-production** database before `mongorestore`. Never use production `MONGO_URL` as restore target.
+Set `STAGING_MONGO_URL` to a **non-production** database before `mongorestore`. Never use production `MONGO_URL` as restore target. Local Atlas SSL: `certifi` CA bundle via `backend/mongo_client.py` (TLS verification stays enabled).
 
 ---
 

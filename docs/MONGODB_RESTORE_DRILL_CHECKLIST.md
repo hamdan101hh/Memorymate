@@ -14,25 +14,23 @@
 
 | Field | Value |
 |-------|--------|
-| **Date** | 2026-06-07 |
-| **Environment** | Local readiness check — live drill **not executed** |
-| **Overall** | **BLOCKED** |
-| **Blocker** | `STAGING_MONGO_URL` not set locally (separate staging/dev MongoDB URI required) |
-| **Backup created** | No |
-| **Restore performed** | No |
-| **App verified against restored DB** | No |
-| **Production touched** | No |
+| **Date** | 2026-06-15 |
+| **Environment** | Local backup from source `MONGO_URL`; restore to **`STAGING_MONGO_URL`** only |
+| **Overall** | **Partial Pass** — DB restore OK; local app verification OK after SSL fix; **full launch sign-off** still needs Render staging check of restored row counts |
+| **Backup created** | Yes (gitignored `backups/`) |
+| **Restore performed** | Yes — staging target only (`mongorestore` exit 0) |
+| **Production touched** | No — source dump read-only; restore target ≠ production URI |
+| **Local SSL issue** | Fixed — Motor/PyMongo use `certifi` CA bundle (`backend/mongo_client.py`) |
+| **Local staging API verification** | Pass — API startup + adaptive onboarding API tests against staging on `:8799` |
+| **WhatsApp / notifications** | Not triggered |
 
-**Next steps to unblock:**
+**Remaining for full §7 Pass:**
 
-1. Provision a **separate** MongoDB database or cluster for staging/dev (not production).
-2. Set `STAGING_MONGO_URL` in local shell or staging Render env (never commit the value).
-3. Run backup: `mongodump --uri "$MONGO_URL" --db memorymate --out "./backups/$(date +%Y-%m-%d)-memorymate"` (gitignored `./backups/`).
-4. Restore to staging only: `mongorestore --uri "$STAGING_MONGO_URL" --drop "./backups/YYYY-MM-DD-memorymate/memorymate"`.
-5. Point staging API at `STAGING_MONGO_URL`; keep `WHATSAPP_*` unset; disable prod push on staging.
-6. Complete §5 verification and §6 smoke; sign off §7.
+1. On **Render staging** (or healthy env): `GET /api/` → 200, login, spot-check memories/reminders/appointments **counts match backup intent**.
+2. If staging DB is empty after restore, re-run `mongorestore` to `STAGING_MONGO_URL` only (never production).
+3. Record owner/date in §7 sign-off table.
 
-**Do not** restore into production `MONGO_URL`. Production launch remains blocked until Overall drill is **Pass**.
+**Earlier blocker (resolved):** `STAGING_MONGO_URL` was missing locally (2026-06-07). **Local SSL:** macOS Python needed `certifi` CA bundle for Atlas — do **not** disable TLS verification.
 
 ---
 
@@ -181,7 +179,7 @@ Complete after drill. Store completed copy outside git (ops log / password manag
 | No staging WhatsApp / prod notifications | | | | |
 | `pytest` on release branch | | | | |
 | Frontend build | | | | |
-| **Overall drill** | **BLOCKED** | `STAGING_MONGO_URL` missing — 2026-06-07 | 2026-06-07 | Engineering |
+| **Overall drill** | **Partial Pass** | DB restore + local API OK (2026-06-15); Render staging row-count check pending | 2026-06-15 | Engineering |
 
 **Launch blocker:** Overall drill must be **Pass** with date and owner recorded before real users.
 
@@ -214,4 +212,4 @@ Do not delete the only good backup while debugging.
 
 ---
 
-*Last updated: 2026-06-07 — live drill blocked pending `STAGING_MONGO_URL`; run at least once before real users; repeat after major schema changes.*
+*Last updated: 2026-06-15 — restore to staging passed; local Atlas SSL fixed via certifi; full sign-off pending Render staging verification.*

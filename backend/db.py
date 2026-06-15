@@ -4,9 +4,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from mongo_client import mongo_client_kwargs
+
 load_dotenv(Path(__file__).parent / ".env")
 
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+client = AsyncIOMotorClient(os.environ["MONGO_URL"], **mongo_client_kwargs())
 db = client[os.environ["DB_NAME"]]
 
 
