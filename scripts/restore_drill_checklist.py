@@ -24,6 +24,9 @@ REQUIRED_VARS = [
 ]
 
 OPTIONAL_URI_ALIASES = ["MONGODB_URI"]
+STAGING_DRILL_VARS = [
+    ("STAGING_MONGO_URL", "Separate staging/dev MongoDB URI — required for restore drill (never production)"),
+]
 
 
 def _load_backend_dotenv() -> None:
@@ -88,6 +91,22 @@ def main() -> int:
             for alias in OPTIONAL_URI_ALIASES:
                 if _is_set(alias):
                     print(f"    (note: {alias} is set — MemoryMate code uses MONGO_URL)")
+    print()
+
+    print("--- Staging restore target (required for live drill) ---")
+    staging_ok = True
+    for name, hint in STAGING_DRILL_VARS:
+        status = _status(name)
+        print(f"  {name}: {status}")
+        if not _is_set(name):
+            staging_ok = False
+    if not staging_ok:
+        print()
+        print("  Restore drill BLOCKED: set STAGING_MONGO_URL to a separate staging/dev database.")
+        print("  Do NOT use production MONGO_URL as the mongorestore target.")
+    else:
+        print()
+        print("  Staging URI present — live drill may proceed (staging/dev target only).")
     print()
 
     missing = [name for name, _ in REQUIRED_VARS if not _is_set(name)]
