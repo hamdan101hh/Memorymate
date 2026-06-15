@@ -10,6 +10,32 @@
 
 ---
 
+## Drill status (latest attempt)
+
+| Field | Value |
+|-------|--------|
+| **Date** | 2026-06-07 |
+| **Environment** | Local readiness check — live drill **not executed** |
+| **Overall** | **BLOCKED** |
+| **Blocker** | `STAGING_MONGO_URL` not set locally (separate staging/dev MongoDB URI required) |
+| **Backup created** | No |
+| **Restore performed** | No |
+| **App verified against restored DB** | No |
+| **Production touched** | No |
+
+**Next steps to unblock:**
+
+1. Provision a **separate** MongoDB database or cluster for staging/dev (not production).
+2. Set `STAGING_MONGO_URL` in local shell or staging Render env (never commit the value).
+3. Run backup: `mongodump --uri "$MONGO_URL" --db memorymate --out "./backups/$(date +%Y-%m-%d)-memorymate"` (gitignored `./backups/`).
+4. Restore to staging only: `mongorestore --uri "$STAGING_MONGO_URL" --drop "./backups/YYYY-MM-DD-memorymate/memorymate"`.
+5. Point staging API at `STAGING_MONGO_URL`; keep `WHATSAPP_*` unset; disable prod push on staging.
+6. Complete §5 verification and §6 smoke; sign off §7.
+
+**Do not** restore into production `MONGO_URL`. Production launch remains blocked until Overall drill is **Pass**.
+
+---
+
 ## 1. Goal
 
 | Objective | Rule |
@@ -155,7 +181,7 @@ Complete after drill. Store completed copy outside git (ops log / password manag
 | No staging WhatsApp / prod notifications | | | | |
 | `pytest` on release branch | | | | |
 | Frontend build | | | | |
-| **Overall drill** | **Pass / Fail** | | | |
+| **Overall drill** | **BLOCKED** | `STAGING_MONGO_URL` missing — 2026-06-07 | 2026-06-07 | Engineering |
 
 **Launch blocker:** Overall drill must be **Pass** with date and owner recorded before real users.
 
@@ -188,4 +214,4 @@ Do not delete the only good backup while debugging.
 
 ---
 
-*Last updated: 2026-06 — run at least once before real users; repeat after major schema changes.*
+*Last updated: 2026-06-07 — live drill blocked pending `STAGING_MONGO_URL`; run at least once before real users; repeat after major schema changes.*

@@ -266,6 +266,14 @@ cd frontend && CI=false yarn build
 
 Also complete: MongoDB restore drill per `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (sign-off §7 required before launch).
 
+| Restore drill | Status (2026-06-07) |
+|---------------|---------------------|
+| Overall | **BLOCKED** — `STAGING_MONGO_URL` not set (need separate staging/dev MongoDB URI) |
+| Backup / restore executed | No |
+| Production overwritten | No |
+
+Set `STAGING_MONGO_URL` to a **non-production** database before `mongorestore`. Never use production `MONGO_URL` as restore target.
+
 ---
 
 ## 9. Post-deploy smoke checklist
