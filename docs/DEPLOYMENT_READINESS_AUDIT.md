@@ -298,7 +298,7 @@ cd frontend && CI=false yarn build
 | `CORS_ORIGINS=*` in production | **High** | Exact Vercel origin |
 | Weak `ADMIN_PASSWORD` | **High** | Set strong `ADMIN_PASSWORD` |
 | Ephemeral image storage on Render | **High** | Limit photo marketing; plan object storage |
-| No DB backup runbook | **High** | Runbook added — **launch blocker until restore drill full Pass** — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (**Partial Pass 2026-06-15:** restore OK; Render staging row-count verification pending) |
+| No DB backup runbook | **High** | Runbook added — **restore drill Pass 2026-06-15** — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (staging row counts verified; launch blocker cleared) |
 | No error monitoring plan | **Medium** | Plan added — assign on-call + log cadence — `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
 | WhatsApp enabled without approval | **Critical** | Leave env unset |
 | GCP paid APIs beyond Calendar | **Critical** | Do not enable |
@@ -315,6 +315,6 @@ cd frontend && CI=false yarn build
 - `docs/CALENDAR_PRODUCTION_TODO.md` — Calendar hardening
 - `docs/MEMORYMATE_COSTS_AND_PAID_SERVICES_REPORT.md` — cost gates
 - `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — backup/restore procedures
-- `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` — restore drill checklist and sign-off (**launch blocker until Pass**)
+- `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` — restore drill checklist and sign-off (**Pass 2026-06-15**)
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — error monitoring and incident response (launch review item)
 - `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production env go/no-go checklist (run before deploy)

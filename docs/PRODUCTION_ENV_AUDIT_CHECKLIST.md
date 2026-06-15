@@ -268,8 +268,8 @@ Also complete: MongoDB restore drill per `docs/MONGODB_RESTORE_DRILL_CHECKLIST.m
 
 | Restore drill | Status (2026-06-15) |
 |---------------|---------------------|
-| Overall | **Partial Pass** — backup + restore to staging OK; local API verification OK after certifi TLS fix |
-| Render staging row-count check | **Pending** — required for full §7 Pass |
+| Overall | **Pass** — backup, staging restore, row counts match backup, staging API verification, `pytest`, frontend build |
+| Staging row-count check | **Pass** — 15 key collections match backup BSON counts (users **188**, memories **488**, reminders **128**, appointments **186**, activity_logs **14632**, etc.) |
 | Production overwritten | No |
 
 Set `STAGING_MONGO_URL` to a **non-production** database before `mongorestore`. Never use production `MONGO_URL` as restore target. Local Atlas SSL: `certifi` CA bundle via `backend/mongo_client.py` (TLS verification stays enabled).
