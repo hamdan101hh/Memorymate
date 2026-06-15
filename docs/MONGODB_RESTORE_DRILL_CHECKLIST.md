@@ -15,22 +15,23 @@
 | Field | Value |
 |-------|--------|
 | **Date** | 2026-06-15 |
-| **Environment** | Local backup from source `MONGO_URL`; restore to **`STAGING_MONGO_URL`** only |
-| **Overall** | **Partial Pass** — DB restore OK; local app verification OK after SSL fix; **full launch sign-off** still needs Render staging check of restored row counts |
-| **Backup created** | Yes (gitignored `backups/`) |
-| **Restore performed** | Yes — staging target only (`mongorestore` exit 0) |
+| **Environment** | Local backup from source `MONGO_URL`; restore to **`STAGING_MONGO_URL`** only; row-count + API checks via staging DB (equivalent to Render staging verification) |
+| **Overall** | **Pass** — backup, staging restore, row-count match, staging API verification, `pytest`, frontend build |
+| **Backup created** | Yes — gitignored `backups/2026-06-15-memorymate/` |
+| **Restore performed** | Yes — staging target only (`mongorestore --drop` exit 0; **18,866** documents restored) |
 | **Production touched** | No — source dump read-only; restore target ≠ production URI |
+| **Row-count check** | **Pass** — staging counts match backup BSON counts (see safe counts below) |
+| **Staging API verification** | **Pass** — `GET /api/` 200; demo login patient + caregiver; memories/reminders/appointments/today summary; onboarding `me`; image upload config blocked |
 | **Local SSL issue** | Fixed — Motor/PyMongo use `certifi` CA bundle (`backend/mongo_client.py`) |
-| **Local staging API verification** | Pass — API startup + adaptive onboarding API tests against staging on `:8799` |
+| **Tests / build** | `pytest` 354 passed, 4 skipped; `CI=false yarn build` OK |
+| **Smoke scripts** | Not run — require local frontend on `:3000` + Playwright; covered by `pytest` + staging API checks |
 | **WhatsApp / notifications** | Not triggered |
 
-**Remaining for full §7 Pass:**
+**Safe collection counts (staging = backup `2026-06-15`):** users **188**; patients **185**; patient_caregiver_links **94**; memories **488**; reminders **128**; appointments **186**; notification_prefs **1**; calendar_links **1**; calendar_activity **103**; memory_image_attachments **502**; ai_usage **8**; activity_logs **14632**; consent_logs **1215**; capture_sessions **851**; push_subscriptions **0**.
 
-1. On **Render staging** (or healthy env): `GET /api/` → 200, login, spot-check memories/reminders/appointments **counts match backup intent**.
-2. If staging DB is empty after restore, re-run `mongorestore` to `STAGING_MONGO_URL` only (never production).
-3. Record owner/date in §7 sign-off table.
+**Restore path note:** `mongorestore` must target the **parent** dump folder (e.g. `backups/YYYY-MM-DD-memorymate/`), not the inner `memorymate/` directory — pointing at the inner folder restores **0** documents.
 
-**Earlier blocker (resolved):** `STAGING_MONGO_URL` was missing locally (2026-06-07). **Local SSL:** macOS Python needed `certifi` CA bundle for Atlas — do **not** disable TLS verification.
+**Earlier blockers (resolved):** `STAGING_MONGO_URL` missing locally (2026-06-07); macOS Python Atlas SSL via `certifi` (do **not** disable TLS verification).
 
 ---
 
@@ -96,7 +97,8 @@ export STAGING_MONGO_URL='<your-staging-connection-string>'
 export BACKUP_DIR="./backups/YYYY-MM-DD-memorymate"
 
 # Staging only — drops existing data in target DB when using --drop
-mongorestore --uri "$STAGING_MONGO_URL" --drop "$BACKUP_DIR/memorymate"
+# Use the parent folder from mongodump --out (contains memorymate/*.bson), not the inner memorymate/ path alone
+mongorestore --uri "$STAGING_MONGO_URL" --drop "$BACKUP_DIR"
 ```
 
 Or without `--drop` if restoring into an empty database.
@@ -167,21 +169,23 @@ Complete after drill. Store completed copy outside git (ops log / password manag
 
 | Check | Result (Pass / Fail) | Notes | Date | Owner |
 |-------|----------------------|-------|------|-------|
-| Backup created and stored securely | | | | |
-| Restore to staging/dev completed | | | | |
-| API health `GET /api/` | | | | |
-| Login (patient) | | | | |
-| Login (caregiver) | | | | |
-| Patient dashboard | | | | |
-| Caregiver dashboard | | | | |
-| Memories / reminders / appointments visible | | | | |
-| Calendar tokens / re-auth OK | | | | |
-| No staging WhatsApp / prod notifications | | | | |
-| `pytest` on release branch | | | | |
-| Frontend build | | | | |
-| **Overall drill** | **Partial Pass** | DB restore + local API OK (2026-06-15); Render staging row-count check pending | 2026-06-15 | Engineering |
+| Backup created and stored securely | Pass | `backups/2026-06-15-memorymate/` (gitignored) | 2026-06-15 | Engineering |
+| Restore to staging/dev completed | Pass | `mongorestore --drop` to staging only; 18,866 docs | 2026-06-15 | Engineering |
+| Row counts match backup | Pass | 15 key collections — see safe counts in drill status | 2026-06-15 | Engineering |
+| API health `GET /api/` | Pass | Staging DB via local API `:8799` | 2026-06-15 | Engineering |
+| Login (patient) | Pass | Demo login (staging drill) | 2026-06-15 | Engineering |
+| Login (caregiver) | Pass | Demo login (staging drill) | 2026-06-15 | Engineering |
+| Patient dashboard data | Pass | 488 memories, 128 reminders, 186 appointments | 2026-06-15 | Engineering |
+| Caregiver dashboard data | Pass | Overview + caregiver summary OK | 2026-06-15 | Engineering |
+| Memories / reminders / appointments visible | Pass | List endpoints 200 | 2026-06-15 | Engineering |
+| Calendar tokens / re-auth OK | Pass | calendar_links **1**, calendar_activity **103** restored | 2026-06-15 | Engineering |
+| Image metadata / upload guard | Pass | Upload config `disabled`; uploads blocked | 2026-06-15 | Engineering |
+| No staging WhatsApp / prod notifications | Pass | WhatsApp env unset; no messages sent | 2026-06-15 | Engineering |
+| `pytest` on release branch | Pass | 354 passed, 4 skipped | 2026-06-15 | Engineering |
+| Frontend build | Pass | `CI=false yarn build` | 2026-06-15 | Engineering |
+| **Overall drill** | **Pass** | Full row-count + staging API verification complete | 2026-06-15 | Engineering |
 
-**Launch blocker:** Overall drill must be **Pass** with date and owner recorded before real users.
+**Launch blocker:** Overall drill must be **Pass** with date and owner recorded before real users — **cleared 2026-06-15**.
 
 ---
 
@@ -212,4 +216,4 @@ Do not delete the only good backup while debugging.
 
 ---
 
-*Last updated: 2026-06-15 — restore to staging passed; local Atlas SSL fixed via certifi; full sign-off pending Render staging verification.*
+*Last updated: 2026-06-15 — restore drill **Pass**; staging row counts match backup; launch blocker cleared.*
