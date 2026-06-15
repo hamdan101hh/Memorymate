@@ -7,6 +7,8 @@ import pytest
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
+from mongo_client import mongo_client_kwargs
+
 # Load backend env so tests share the same DB as the running API server.
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -17,7 +19,7 @@ def _reset_today_ai_usage() -> None:
     db_name = os.environ.get("DB_NAME")
     if not mongo_url or not db_name:
         return
-    client = MongoClient(mongo_url)
+    client = MongoClient(mongo_url, **mongo_client_kwargs(mongo_url))
     db = client[db_name]
     db.ai_usage.delete_many({"day": date.today().isoformat()})
 

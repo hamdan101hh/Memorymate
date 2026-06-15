@@ -298,7 +298,7 @@ cd frontend && CI=false yarn build
 | `CORS_ORIGINS=*` in production | **High** | Exact Vercel origin |
 | Weak `ADMIN_PASSWORD` | **High** | Set strong `ADMIN_PASSWORD` |
 | Ephemeral image storage on Render | **High** | Limit photo marketing; plan object storage |
-| No DB backup runbook | **High** | Runbook added — **launch blocker until restore drill Pass** — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (**BLOCKED 2026-06-07:** `STAGING_MONGO_URL` not configured) |
+| No DB backup runbook | **High** | Runbook added — **launch blocker until restore drill full Pass** — `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` (**Partial Pass 2026-06-15:** restore OK; Render staging row-count verification pending) |
 | No error monitoring plan | **Medium** | Plan added — assign on-call + log cadence — `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
 | WhatsApp enabled without approval | **Critical** | Leave env unset |
 | GCP paid APIs beyond Calendar | **Critical** | Do not enable |
