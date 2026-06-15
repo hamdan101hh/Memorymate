@@ -163,8 +163,11 @@ mongorestore --uri "<STAGING_MONGODB_URI>" ./backups/YYYY-MM-DD-memorymate
 With drop (staging only, after explicit approval):
 
 ```bash
-mongorestore --uri "$STAGING_MONGO_URL" --drop "$BACKUP_DIR/memorymate"
+# Parent folder from mongodump --out (contains memorymate/*.bson) — not the inner memorymate/ path alone
+mongorestore --uri "$STAGING_MONGO_URL" --drop "$BACKUP_DIR"
 ```
+
+**Helper:** `python scripts/run_restore_drill.py` automates dump + restore with the correct parent-folder path. See [MONGODB_RESTORE_DRILL_CHECKLIST.md](./MONGODB_RESTORE_DRILL_CHECKLIST.md) §2.1.
 
 ### Single collection export (`mongoexport`)
 
@@ -273,7 +276,10 @@ Record results: date, environment, verifier, pass/fail notes.
 | `ENABLE_DEMO` | Set appropriately per environment after restore |
 | `WHATSAPP_*` | Keep unset until WhatsApp is approved — prevents accidental sends |
 
-**Restore drill helper:** `python scripts/restore_drill_checklist.py` (env presence only — no DB connection).
+**Restore drill helpers:**
+
+- `python scripts/restore_drill_checklist.py` — env presence only (no DB connection).
+- `python scripts/run_restore_drill.py` — guided `mongodump` + staging `mongorestore` (see drill checklist §2.1).
 
 ---
 

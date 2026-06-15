@@ -6,7 +6,50 @@
 
 **No secrets in this document** — placeholder commands only.
 
-**Local helper (optional):** `python scripts/restore_drill_checklist.py` — checks env var **names** are set locally; does **not** connect to MongoDB or print values.
+**Local helpers (optional):**
+
+- `python scripts/restore_drill_checklist.py` — dry-run; checks env var **names** are set locally; does **not** connect to MongoDB or print values.
+- `python scripts/run_restore_drill.py` — runs `mongodump` (source) + `mongorestore` (staging only). See **§2.1** below.
+
+---
+
+## 2.1 Restore drill helper script
+
+Use `scripts/run_restore_drill.py` for a guided dump → restore flow. It reads **environment variables only** (or optional gitignored `backend/.env` / `backend/.env.staging`). It **never prints** MongoDB URIs or secret values.
+
+**Before running:**
+
+- Set `MONGO_URL` (source — read-only dump) and `STAGING_MONGO_URL` (restore target) in your shell or gitignored env files.
+- **Do not paste** URI values into docs, chat, issues, or git.
+- **Do not commit** `backend/.env.staging`, backup files, or anything under `./backups/` (gitignored).
+- Confirm `MONGO_URL` ≠ `STAGING_MONGO_URL` (script refuses if they match).
+
+**Usage:**
+
+```bash
+# Dry-run env check first
+python scripts/restore_drill_checklist.py
+
+# Help (no database access)
+python scripts/run_restore_drill.py --help
+
+# Live drill — mongodump from MONGO_URL, mongorestore to STAGING_MONGO_URL only
+python scripts/run_restore_drill.py
+
+# Skip brief local API health check after restore
+python scripts/run_restore_drill.py --skip-health-check
+
+# Force a fresh mongodump even if today's backup folder exists
+python scripts/run_restore_drill.py --force-dump
+```
+
+**What the script does:**
+
+1. `mongodump` from `MONGO_URL` into `./backups/YYYY-MM-DD-memorymate/` (gitignored).
+2. `mongorestore --drop` to `STAGING_MONGO_URL` using the **parent** dump folder (`backups/YYYY-MM-DD-memorymate/`), **not** the inner `memorymate/` path alone — pointing at the inner folder restores **0** documents.
+3. Optional brief local `GET /api/` on `:8799` against staging (WhatsApp env vars cleared; no notifications sent).
+
+**Safety:** TLS verification is not disabled. The script does not call WhatsApp or send notifications. It does not commit backups.
 
 ---
 
@@ -63,6 +106,7 @@ Before starting:
 - [ ] **Demo mode** — `ENABLE_DEMO=true` OK on dev; staging should mirror prod intent (`false` for prod-like drill)
 - [ ] **`TOKEN_ENCRYPTION_KEY`** on staging matches source if testing Calendar tokens from prod backup (or expect re-auth)
 - [ ] Run `python scripts/restore_drill_checklist.py` locally to verify env **names** (not values) before API smoke
+- [ ] Optional live dump/restore: `python scripts/run_restore_drill.py` (see §2.1 — env vars only; never paste URIs)
 
 ---
 
