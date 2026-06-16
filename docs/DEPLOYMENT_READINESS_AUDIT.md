@@ -302,6 +302,7 @@ cd frontend && CI=false yarn build
 | No error monitoring plan | **Medium** | Plan added — assign on-call + log cadence — `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` |
 | WhatsApp enabled without approval | **Critical** | Leave env unset |
 | GCP paid APIs beyond Calendar | **Critical** | Do not enable |
+| Focus Capture without gates | **High** | MVP shipped — keep `FOCUS_CAPTURE_ENABLED=false` until launch; no cloud transcription; see `docs/FOCUS_CAPTURE_RECORDING_PLAN.md` |
 
 ---
 
@@ -317,4 +318,4 @@ cd frontend && CI=false yarn build
 - `docs/MONGODB_BACKUP_RESTORE_RUNBOOK.md` — backup/restore procedures
 - `docs/MONGODB_RESTORE_DRILL_CHECKLIST.md` — restore drill checklist and sign-off (**Pass 2026-06-15**)
 - `docs/PRODUCTION_ERROR_MONITORING_PLAN.md` — error monitoring and incident response (launch review item)
-- `docs/PRODUCTION_ENV_AUDIT_CHECKLIST.md` — production env go/no-go checklist (run before deploy)
+- `docs/FOCUS_CAPTURE_RECORDING_PLAN.md` — Focus Capture MVP (manual sessions, no 24/7 recording)

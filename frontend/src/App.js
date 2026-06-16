@@ -55,6 +55,7 @@ const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminCollections = lazy(() => import("./pages/admin/AdminCollections"));
 const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
 const AdminCosts = lazy(() => import("./pages/admin/AdminCosts"));
+const FocusCapture = lazy(() => import("./pages/patient/FocusCapture"));
 
 const CaptureStart = lazy(() => import("./pages/capture/CaptureStart"));
 const AlwaysOnSetup = lazy(() => import("./pages/capture/AlwaysOnSetup"));
@@ -107,6 +108,7 @@ function AppRoutes() {
       <Route path="/patient" element={<Protected roles={["patient"]}><PatientLayout /></Protected>}>
         <Route index element={<PatientHome />} />
         <Route path="record" element={<RecordMemory />} />
+        <Route path="focus-capture" element={<FocusCapture />} />
         <Route path="assistant" element={<Assistant />} />
         <Route path="today" element={<TodaySummary />} />
         <Route path="reminders" element={<PatientReminders />} />

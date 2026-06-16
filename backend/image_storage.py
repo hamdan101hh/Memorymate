@@ -26,7 +26,7 @@ EXT_FOR_MIME = {
 
 LINKED_TYPES = frozenset({
     "draft", "memory", "reminder", "appointment", "meeting", "conversation",
-    "smart_day_draft", "meeting_note",
+    "smart_day_draft", "meeting_note", "focus_capture",
 })
 
 
