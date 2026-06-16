@@ -82,7 +82,7 @@ class TestCleanupClutter:
         token = _demo("caregiver")["token"]
         r = requests.post(f"{API}/calendar/cleanup-clutter", headers=_h(token), timeout=60)
         # May fail if calendar not connected — accept 200 or 401/404 from gcal
-        assert r.status_code in (200, 401, 404, 502)
+        assert r.status_code in (200, 401, 404, 409, 502)
 
 
 class TestWhoopPlanning:

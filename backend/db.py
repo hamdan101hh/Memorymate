@@ -28,3 +28,5 @@ async def ensure_indexes():
     await db.memory_image_attachments.create_index([("patient_id", 1), ("status", 1)])
     await db.memory_image_attachments.create_index([("patient_id", 1), ("capture_session_id", 1)])
     await db.memory_image_attachments.create_index("expires_at")
+    await db.user_cost_profiles.create_index("user_id", unique=True)
+    await db.cost_platform_settings.create_index("id", unique=True)

@@ -54,6 +54,7 @@ const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminCollections = lazy(() => import("./pages/admin/AdminCollections"));
 const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
+const AdminCosts = lazy(() => import("./pages/admin/AdminCosts"));
 
 const CaptureStart = lazy(() => import("./pages/capture/CaptureStart"));
 const AlwaysOnSetup = lazy(() => import("./pages/capture/AlwaysOnSetup"));
@@ -161,6 +162,7 @@ function AppRoutes() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="data" element={<AdminCollections />} />
         <Route path="logs" element={<AdminLogs />} />
+        <Route path="costs" element={<AdminCosts />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
 

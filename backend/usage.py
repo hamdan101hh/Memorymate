@@ -14,6 +14,7 @@ from fastapi import HTTPException
 
 from db import db
 import voice_guardrails as vg
+import cost_control
 
 # Per-patient daily ceiling. 0.50 leaves headroom over the ~0.35 target/user so a
 # normal heavy day is never blocked, while a runaway loop still can't drain the pool.
@@ -69,6 +70,7 @@ async def actions_today(pid: str) -> int:
 
 async def assert_within_cap(pid: str) -> None:
     """Raise 429 if the patient has already hit today's AI cost ceiling."""
+    await cost_control.assert_within_monthly_quota_for_patient(pid)
     if DAILY_AI_COST_CAP_USD <= 0:
         return
     if await spent_today(pid) >= DAILY_AI_COST_CAP_USD:
