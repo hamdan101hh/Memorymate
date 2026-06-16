@@ -45,7 +45,8 @@ These are planning targets — actual costs depend on transcription minutes, Wha
 | Feature flags per user | Focus capture, WhatsApp, summaries, paid AI — **off by default** |
 | Cheap AI models first | Capture/summary tier before premium |
 | Summarize in batches | Planned for monthly summary (not live) |
-| Limit recording minutes | Voice guardrails + plan caps |
+| Limit recording minutes | Voice guardrails + plan caps; Focus Capture MVP tracks duration at **$0** cost |
+| Focus Capture MVP | Manual sessions only — no audio upload, no cloud STT, `estimated_cost_usd=0` |
 | Silence skipping | Planned later to reduce transcription cost |
 | No paid OCR / image AI by default | Manual captions only until approved |
 | Hard stop at quota | When `MONTHLY_USAGE_QUOTA_ENFORCED=true` (default off until production config) |
@@ -70,4 +71,4 @@ These are planning targets — actual costs depend on transcription minutes, Wha
 
 ---
 
-*Last updated: 2026-06-15 — foundation phase; no live paid APIs.*
+*Last updated: 2026-06-07 — Focus Capture MVP (manual sessions, no paid APIs).*

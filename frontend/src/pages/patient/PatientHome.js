@@ -7,10 +7,11 @@ import { logError } from "../../lib/logger";
 import NotificationPermissionPrompt from "../../components/NotificationPermissionPrompt";
 import SmartMemoryCaptureCard from "../../components/patient/SmartMemoryCaptureCard";
 import MemoryVisualTile from "../../components/MemoryVisualTile";
-import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone, BookHeart } from "lucide-react";
+import { Mic, MessageCircleHeart, Sun, Bell, Users, Phone, BookHeart, Crosshair } from "lucide-react";
 
 const TILES = [
   { to: "record", icon: Mic, title: "Record a memory", color: "bg-sky-600", testid: "tile-record" },
+  { to: "focus-capture", icon: Crosshair, title: "Focus Capture", color: "bg-teal-600", testid: "tile-focus-capture" },
   { to: "assistant", icon: MessageCircleHeart, title: "Ask my assistant", color: "bg-emerald-600", testid: "tile-assistant" },
   { to: "today", icon: Sun, title: "What's happening today?", color: "bg-amber-500", testid: "tile-today" },
   { to: "reminders", icon: Bell, title: "My reminders", color: "bg-violet-600", testid: "tile-reminders" },

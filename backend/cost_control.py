@@ -259,6 +259,37 @@ async def assert_within_monthly_quota_for_patient(patient_id: str) -> None:
         await assert_within_monthly_quota(uid)
 
 
+async def assert_focus_capture_allowed(user_id: str) -> None:
+    """Focus Capture requires global env or admin_test plan with per-user flag (raw profile, not env-clamped)."""
+    if FOCUS_CAPTURE_ENABLED:
+        return
+    profile = await get_or_create_profile(user_id)
+    if profile.get("plan") == "admin_test":
+        raw_flags = profile.get("feature_flags") or {}
+        if raw_flags.get("focus_capture_enabled"):
+            return
+    raise HTTPException(
+        status_code=403,
+        detail="Focus Capture is not enabled. Ask an admin to enable it for testing.",
+    )
+
+
+async def record_focus_capture_usage(user_id: str, duration_seconds: float) -> None:
+    """Track session duration locally — MVP cost remains $0 (no cloud transcription)."""
+    minutes = max(0.0, duration_seconds) / 60.0
+    if minutes <= 0:
+        return
+    await db.user_cost_profiles.update_one(
+        {"user_id": user_id},
+        {
+            "$inc": {
+                "voice_minutes_used": round(minutes, 2),
+            },
+            "$set": {"updated_at": NOW()},
+        },
+    )
+
+
 def profile_public(profile: dict) -> dict:
     flags = _merge_feature_flags(profile.get("feature_flags"))
     quota = float(profile.get("monthly_quota_usd", 0.0))
