@@ -18,6 +18,7 @@ import support
 import gcal
 import seed
 import image_routes
+import cost_routes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("memorymate")
@@ -32,6 +33,7 @@ app.include_router(notifications.router)
 app.include_router(support.router)
 app.include_router(gcal.router)
 app.include_router(image_routes.router)
+app.include_router(cost_routes.router)
 
 
 @app.get("/api/")
